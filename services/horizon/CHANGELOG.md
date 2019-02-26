@@ -30,6 +30,7 @@ This release introduces ingestion of failed transactions. This feature is turned
 * Added ingestion of failed transactions (see Upgrade notes). Use `include_failed=true` GET parameter to display failed transactions and operations in collection endpoints.
 * `/fee_stats` endpoint has been extended with fee percentiles and ledger capacity usage. Both are useful in transaction fee estimations.
 * Fixed a bug causing slice bounds out of range at `/account/{id}/offers` endpoint during streaming.
+* Added `horizon db reingest range X Y` that reingests ledgers between X and Y sequence number (included).
 * Many code improvements.
 
 ## v0.16.0 - 2019-02-04
