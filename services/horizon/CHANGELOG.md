@@ -18,7 +18,7 @@ This release introduces ingestion of failed transactions. This feature is turned
 
 ### Breaking changes
 
-* Fields scheduled for removal in this version have been removed:
+* Fields removed in this version:
   * Root > `protocol_version`, use `current_protocol_version` and `core_supported_protocol_version`.
   * Ledger > `transaction_count`, use `successful_transaction_count` and `failed_transaction_count`.
   * Signer > `public_key`, use `key`.
@@ -30,7 +30,7 @@ This release introduces ingestion of failed transactions. This feature is turned
 * Added ingestion of failed transactions (see Upgrade notes). Use `include_failed=true` GET parameter to display failed transactions and operations in collection endpoints.
 * `/fee_stats` endpoint has been extended with fee percentiles and ledger capacity usage. Both are useful in transaction fee estimations.
 * Fixed a bug causing slice bounds out of range at `/account/{id}/offers` endpoint during streaming.
-* Added `horizon db reingest range X Y` that reingests ledgers between X and Y sequence number (included).
+* Added `horizon db reingest range X Y` that reingests ledgers between X and Y sequence number (closed intervals).
 * Many code improvements.
 
 ## v0.16.0 - 2019-02-04
