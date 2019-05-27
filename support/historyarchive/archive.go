@@ -37,7 +37,7 @@ type ConnectOptions struct {
 }
 
 type ArchiveBackend interface {
-	Exists(path string) bool
+	Exists(path string) (bool, error)
 	GetFile(path string) (io.ReadCloser, error)
 	PutFile(path string, in io.ReadCloser) error
 	ListFiles(path string) (chan string, chan error)
@@ -80,7 +80,11 @@ func (a *Archive) GetPathHAS(path string) (HistoryArchiveState, error) {
 }
 
 func (a *Archive) PutPathHAS(path string, has HistoryArchiveState, opts *CommandOptions) error {
-	if a.backend.Exists(path) && !opts.Force {
+	exists, err := a.backend.Exists(path)
+	if err != nil {
+		return err
+	}
+	if exists && !opts.Force {
 		log.Printf("skipping existing " + path)
 		return nil
 	}
@@ -92,11 +96,11 @@ func (a *Archive) PutPathHAS(path string, has HistoryArchiveState, opts *Command
 		ioutil.NopCloser(bytes.NewReader(buf)))
 }
 
-func (a *Archive) BucketExists(bucket Hash) bool {
+func (a *Archive) BucketExists(bucket Hash) (bool, error) {
 	return a.backend.Exists(BucketPath(bucket))
 }
 
-func (a *Archive) CategoryCheckpointExists(cat string, chk uint32) bool {
+func (a *Archive) CategoryCheckpointExists(cat string, chk uint32) (bool, error) {
 	return a.backend.Exists(CategoryCheckpointPath(cat, chk))
 }
 
