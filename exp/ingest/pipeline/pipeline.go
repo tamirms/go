@@ -10,7 +10,11 @@ import (
 	"github.com/stellar/go/exp/ingest/io"
 )
 
-func (p *Pipeline) Node(processor StateProcessor) *PipelineNode {
+func New(rootProcessor *PipelineNode) *Pipeline {
+	return &Pipeline{rootStateProcessor: rootProcessor}
+}
+
+func Node(processor StateProcessor) *PipelineNode {
 	return &PipelineNode{
 		Processor: processor,
 	}
@@ -60,7 +64,7 @@ func (p *Pipeline) printNodeStatus(node *PipelineNode, level int) {
 	}
 }
 
-func (p *Pipeline) AddStateProcessorTree(rootProcessor *PipelineNode) {
+func (p *Pipeline) SetRoot(rootProcessor *PipelineNode) {
 	p.rootStateProcessor = rootProcessor
 }
 
@@ -72,11 +76,25 @@ func (p *Pipeline) ProcessState(readCloser io.StateReadCloser) <-chan error {
 	p.done = true
 	p.doneMutex.Unlock()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	return p.processStateNode(ctx, &Store{}, p.rootStateProcessor, readCloser, cancel)
+	var ctx context.Context
+	ctx, p.cancelFunc = context.WithCancel(context.Background())
+	return p.processStateNode(ctx, &Store{}, p.rootStateProcessor, readCloser)
 }
 
-func (p *Pipeline) processStateNode(ctx context.Context, store *Store, node *PipelineNode, readCloser io.StateReadCloser, cancel context.CancelFunc) <-chan error {
+func (p *Pipeline) Shutdown() {
+	// Protects from cancelling twice
+	p.cancelledMutex.Lock()
+	defer p.cancelledMutex.Unlock()
+
+	if p.cancelled {
+		return
+	}
+	p.cancelled = true
+	p.cancelledWithErr = false
+	p.cancelFunc()
+}
+
+func (p *Pipeline) processStateNode(ctx context.Context, store *Store, node *PipelineNode, readCloser io.StateReadCloser) <-chan error {
 	outputs := make([]io.StateWriteCloser, len(node.Children))
 
 	for i := range outputs {
@@ -103,10 +121,9 @@ func (p *Pipeline) processStateNode(ctx context.Context, store *Store, node *Pip
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-
 			err := node.Processor.ProcessState(ctx, store, readCloser, writeCloser)
 			if err != nil {
-				// Protect from cancelling twice and sending multiple errors to err channel
+				// Protects from cancelling twice and sending multiple errors to err channel
 				p.cancelledMutex.Lock()
 				defer p.cancelledMutex.Unlock()
 
@@ -114,7 +131,8 @@ func (p *Pipeline) processStateNode(ctx context.Context, store *Store, node *Pip
 					return
 				}
 				p.cancelled = true
-				cancel()
+				p.cancelledWithErr = true
+				p.cancelFunc()
 				errorChan <- err
 			}
 		}()
@@ -126,8 +144,7 @@ func (p *Pipeline) processStateNode(ctx context.Context, store *Store, node *Pip
 		wg.Add(1)
 		go func(i int, child *PipelineNode) {
 			defer wg.Done()
-			done := p.processStateNode(ctx, store, child, outputs[i].(*bufferedStateReadWriteCloser), cancel)
-			err := <-done
+			err := <-p.processStateNode(ctx, store, child, outputs[i].(*bufferedStateReadWriteCloser))
 			if err != nil {
 				errorChan <- err
 			}
@@ -139,7 +156,11 @@ func (p *Pipeline) processStateNode(ctx context.Context, store *Store, node *Pip
 		finishUpdatingStats <- true
 		select {
 		case <-ctx.Done():
-			// Do nothing, err already sent to a channel...
+			if p.cancelledWithErr {
+				errorChan <- nil
+			} else {
+				// Do nothing, err already sent to a channel...
+			}
 		default:
 			errorChan <- nil
 		}
