@@ -1,13 +1,8 @@
 package io
 
 import (
-	"io"
-
 	"github.com/stellar/go/xdr"
 )
-
-var EOF = io.EOF
-var ErrClosedPipe = io.ErrClosedPipe
 
 // StateReadCloser interface placeholder
 type StateReadCloser interface {

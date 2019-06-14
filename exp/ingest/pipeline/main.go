@@ -2,60 +2,17 @@ package pipeline
 
 import (
 	"context"
-	"sync"
-	"time"
 
 	"github.com/stellar/go/exp/ingest/io"
-	"github.com/stellar/go/xdr"
+	supportPipeline "github.com/stellar/go/exp/support/pipeline"
 )
 
-type bufferedStateReadWriteCloser struct {
-	initOnce sync.Once
-
-	// readEntriesMutex protects readEntries variable
-	readEntriesMutex sync.Mutex
-	readEntries      int
-
-	// writeCloseMutex protects from writing to a closed buffer
-	// and wroteEntries variable
-	writeCloseMutex sync.Mutex
-	wroteEntries    int
-
-	// closeOnce protects from closing buffer twice
-	closeOnce sync.Once
-	buffer    chan xdr.LedgerEntryChange
-	closed    bool
+type StatePipeline struct {
+	supportPipeline.Pipeline
 }
 
-type multiWriteCloser struct {
-	writers []io.StateWriteCloser
-
-	mutex        sync.Mutex
-	closeAfter   int
-	wroteEntries int
-}
-
-type Pipeline struct {
-	rootStateProcessor *PipelineNode
-
-	doneMutex sync.Mutex
-	done      bool
-
-	cancelledMutex sync.Mutex
-	cancelled      bool
-}
-
-type PipelineNode struct {
-	Processor StateProcessor
-	Children  []*PipelineNode
-
-	duration        time.Duration
-	jobs            int
-	readEntries     int
-	readsPerSecond  int
-	queuedEntries   int
-	wroteEntries    int
-	writesPerSecond int
+type TransactionPipeline struct {
+	supportPipeline.Pipeline
 }
 
 // StateProcessor defines methods required by state processing pipeline.
@@ -116,7 +73,7 @@ type StateProcessor interface {
 	//
 	//    	return nil
 	//    }
-	ProcessState(context.Context, *Store, io.StateReadCloser, io.StateWriteCloser) error
+	ProcessState(context.Context, *supportPipeline.Store, io.StateReadCloser, io.StateWriteCloser) error
 	// IsConcurrent defines if processing pipeline should start a single instance
 	// of the processor or multiple instances. Multiple instances will read
 	// from the same StateReader and write to the same StateWriter.
@@ -135,30 +92,22 @@ type StateProcessor interface {
 	Name() string
 }
 
-// Store allows storing data connected to pipeline execution.
-// It exposes `Lock()` and `Unlock()` methods that must be called
-// when accessing the `Store` for both `Put` and `Get` calls.
-//
-// Example (incrementing a number):
-// s.Lock()
-// v := s.Get("value")
-// s.Put("value", v.(int)+1)
-// s.Unlock()
-type Store struct {
-	sync.Mutex
-	initOnce sync.Once
-	values   map[string]interface{}
+// stateProcessorWrapper wraps StateProcessor to be implement pipeline.Processor interface.
+type stateProcessorWrapper struct {
+	StateProcessor
 }
 
-// ReduceStateProcessor forwards the final produced by applying all the
-// ledger entries to the writer.
-// Let's say that there are 3 ledger entries:
-//     - Create account A (XLM balance = 20)
-//     - Update XLM balance of A to 5
-//     - Update XLM balance of A to 15
-// Running ReduceStateProcessor will add a single ledger entry:
-//     - Create account A (XLM balance = 15)
-// to the writer.
-type ReduceStateProcessor struct {
-	//
+// stateReadCloserWrapper wraps StateReadCloser to be implement pipeline.ReadCloser interface.
+type stateReadCloserWrapper struct {
+	io.StateReadCloser
+}
+
+// readCloserWrapper wraps pipelinne.ReadCloser to be implement StateReadCloser interface.
+type readCloserWrapper struct {
+	supportPipeline.ReadCloser
+}
+
+// readCloserWrapper wraps pipelinne.WriteCloser to be implement StateWriteCloser interface.
+type writeCloserWrapper struct {
+	supportPipeline.WriteCloser
 }
