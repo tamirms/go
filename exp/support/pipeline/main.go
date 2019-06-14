@@ -9,7 +9,7 @@ import (
 // BufferedReadWriteCloser implements ReadCloser and WriteCloser and acts
 // like a pipe. All writes are queued in a buffered channel and are waiting
 // to be consumed.
-
+//
 // Used internally by Pipeline but also helpful for testing.
 type BufferedReadWriteCloser struct {
 	initOnce sync.Once
