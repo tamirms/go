@@ -97,17 +97,25 @@ type stateProcessorWrapper struct {
 	StateProcessor
 }
 
+var _ supportPipeline.Processor = &stateProcessorWrapper{}
+
 // stateReadCloserWrapper wraps StateReadCloser to be implement pipeline.ReadCloser interface.
 type stateReadCloserWrapper struct {
 	io.StateReadCloser
 }
+
+var _ supportPipeline.ReadCloser = &stateReadCloserWrapper{}
 
 // readCloserWrapper wraps pipelinne.ReadCloser to be implement StateReadCloser interface.
 type readCloserWrapper struct {
 	supportPipeline.ReadCloser
 }
 
+var _ io.StateReadCloser = &readCloserWrapper{}
+
 // readCloserWrapper wraps pipelinne.WriteCloser to be implement StateWriteCloser interface.
 type writeCloserWrapper struct {
 	supportPipeline.WriteCloser
 }
+
+var _ io.StateWriteCloser = &writeCloserWrapper{}
