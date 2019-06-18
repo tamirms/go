@@ -143,7 +143,7 @@ func ExamplePipeline(t *testing.T) {
 		buffer.Close()
 	}()
 
-	done := pipeline.Process(&readCloserWrapper{buffer})
+	done := pipeline.Process(&readCloserWrapperState{buffer})
 	startTime := time.Now()
 
 	go func() {

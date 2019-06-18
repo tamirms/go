@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 
+	"github.com/stellar/go/exp/ingest/io"
 	supportPipeline "github.com/stellar/go/exp/support/pipeline"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/xdr"
@@ -12,8 +13,17 @@ func (w *stateProcessorWrapper) Process(ctx context.Context, store *supportPipel
 	return w.StateProcessor.ProcessState(
 		ctx,
 		store,
-		&readCloserWrapper{readCloser},
-		&writeCloserWrapper{writeCloser},
+		&readCloserWrapperState{readCloser},
+		&writeCloserWrapperState{writeCloser},
+	)
+}
+
+func (w *ledgerProcessorWrapper) Process(ctx context.Context, store *supportPipeline.Store, readCloser supportPipeline.ReadCloser, writeCloser supportPipeline.WriteCloser) error {
+	return w.LedgerProcessor.ProcessLedger(
+		ctx,
+		store,
+		&readCloserWrapperLedger{readCloser},
+		&writeCloserWrapperLedger{writeCloser},
 	)
 }
 
@@ -21,13 +31,17 @@ func (w *stateReadCloserWrapper) Read() (interface{}, error) {
 	return w.StateReadCloser.Read()
 }
 
-func (w *readCloserWrapper) GetSequence() uint32 {
+func (w *readCloserWrapperState) GetSequence() uint32 {
 	// TODO we should probably keep ledger sequence in context and this
 	// method will be just a wrapper that fetches the data.
 	return 0
 }
 
-func (w *readCloserWrapper) Read() (xdr.LedgerEntryChange, error) {
+func (w *ledgerReadCloserWrapper) Read() (interface{}, error) {
+	return w.LedgerReadCloser.Read()
+}
+
+func (w *readCloserWrapperState) Read() (xdr.LedgerEntryChange, error) {
 	object, err := w.ReadCloser.Read()
 	if err != nil {
 		return xdr.LedgerEntryChange{}, err
@@ -41,6 +55,36 @@ func (w *readCloserWrapper) Read() (xdr.LedgerEntryChange, error) {
 	return entry, nil
 }
 
-func (w *writeCloserWrapper) Write(entry xdr.LedgerEntryChange) error {
+func (w *readCloserWrapperLedger) GetSequence() uint32 {
+	// TODO we should probably keep ledger sequence in context and this
+	// method will be just a wrapper that fetches the data.
+	return 0
+}
+
+func (w *readCloserWrapperLedger) GetHeader() (xdr.LedgerHeaderHistoryEntry, error) {
+	// TODO we should probably keep header in context and this
+	// method will be just a wrapper that fetches the data.
+	return xdr.LedgerHeaderHistoryEntry{}, nil
+}
+
+func (w *readCloserWrapperLedger) Read() (io.LedgerTransaction, error) {
+	object, err := w.ReadCloser.Read()
+	if err != nil {
+		return io.LedgerTransaction{}, err
+	}
+
+	entry, ok := object.(io.LedgerTransaction)
+	if !ok {
+		return io.LedgerTransaction{}, errors.New("Read object is not io.LedgerTransaction")
+	}
+
+	return entry, nil
+}
+
+func (w *writeCloserWrapperState) Write(entry xdr.LedgerEntryChange) error {
+	return w.WriteCloser.Write(entry)
+}
+
+func (w *writeCloserWrapperLedger) Write(entry io.LedgerTransaction) error {
 	return w.WriteCloser.Write(entry)
 }
