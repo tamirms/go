@@ -73,25 +73,38 @@ func (tx *Transaction) Base64() (string, error) {
 
 // SetDefaultFee sets a sensible minimum default for the Transaction fee, if one has not
 // already been set. It is a linear function of the number of Operations in the Transaction.
+// Deprecated: This will be removed in v2.0.0 and setting `Transaction.BaseFee` will be mandatory.
 func (tx *Transaction) SetDefaultFee() {
 	// TODO: Generalise to pull this from a client call
 	var DefaultBaseFee uint32 = 100
 	if tx.BaseFee == 0 {
 		tx.BaseFee = DefaultBaseFee
 	}
-	if tx.xdrTransaction.Fee == 0 {
-		tx.xdrTransaction.Fee = xdr.Uint32(int(tx.BaseFee) * len(tx.xdrTransaction.Operations))
+
+	err := tx.setTransactionFee()
+	if err != nil {
+		panic(err)
 	}
 }
 
 // Build for Transaction completely configures the Transaction. After calling Build,
 // the Transaction is ready to be serialised or signed.
 func (tx *Transaction) Build() error {
-	// Set account ID in XDR
-	// TODO: Validate provided key before going further
-	tx.xdrTransaction.SourceAccount.SetAddress(tx.SourceAccount.GetAccountID())
 
-	// TODO: Validate Seq Num is present in struct
+	accountID := tx.SourceAccount.GetAccountID()
+	_, err := keypair.Parse(accountID)
+	if err != nil {
+		return err
+	}
+
+	if accountID[0] != 'G' {
+		return err
+	}
+
+	// Set account ID in XDR
+	tx.xdrTransaction.SourceAccount.SetAddress(accountID)
+
+	// TODO: Validate Seq Num is present in struct. Requires Account.GetSequenceNumber (v.2.0.0)
 	seqnum, err := tx.SourceAccount.IncrementSequenceNumber()
 	if err != nil {
 		return errors.Wrap(err, "failed to parse sequence number")
@@ -124,6 +137,7 @@ func (tx *Transaction) Build() error {
 	}
 
 	// Set a default fee, if it hasn't been set yet
+	// To Do: replace with tx.setTransactionfee in v2.0.0
 	tx.SetDefaultFee()
 
 	return nil
@@ -193,3 +207,30 @@ func (tx *Transaction) HashHex() (string, error) {
 func (tx *Transaction) TxEnvelope() *xdr.TransactionEnvelope {
 	return tx.xdrEnvelope
 }
+
+func (tx *Transaction) setTransactionFee() error {
+	if tx.BaseFee == 0 {
+		return errors.New("base fee can not be zero")
+	}
+
+	tx.xdrTransaction.Fee = xdr.Uint32(int(tx.BaseFee) * len(tx.xdrTransaction.Operations))
+	return nil
+}
+
+// func (tx *Transaction) getNetworkFees() (hProtocol.FeeStats, error) {
+// 	client := horizonclient.Client{}
+// 	if tx.Network == network.TestNetworkPassphrase {
+// 		client = horizonclient.DefaultTestNetClient
+// 	} else if tx.Network == network.PublicNetworkPassphrase {
+// 		client = horizonclient.DefaultPublicNetClient
+// 	} else {
+// 		return hProtocol.FeeStats{MinAcceptedFee: int(100)}, nil
+// 	}
+
+// 	fs, err := client.FeeStats()
+// 	if err != nil {
+// 		return hProtocol.FeeStats{}, errors.Wrap(err, "unable to get fee stats from network")
+// 	}
+
+// 	return fs, nil
+// }
