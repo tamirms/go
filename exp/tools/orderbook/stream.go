@@ -9,8 +9,9 @@ import (
 	"github.com/stellar/go/xdr"
 )
 
-func updateOrderbookWithStateStream(graph OrderBookGraph, reader ingest.StateReadCloser) error {
+func updateOrderbookWithStateStream(graph *OrderBookGraph, reader ingest.StateReadCloser) error {
 	i := 0
+	batch := graph.Batch()
 	for {
 		i++
 		entry, err := reader.Read()
@@ -37,16 +38,19 @@ func updateOrderbookWithStateStream(graph OrderBookGraph, reader ingest.StateRea
 		log.WithField("offer", offer).Info("adding offer to graph")
 		if offer.Price.N == 0 {
 			log.WithField("offer", offer).Warn("offer has 0 price")
-		} else if err := graph.Add(offer); err != nil {
-			return errors.Wrap(err, "could not add offer from StateReadCloser")
+		} else {
+			batch.AddOffer(offer)
 		}
+	}
 
+	if err := batch.Apply(); err != nil {
+		return errors.Wrap(err, "could not apply updates from StateReadCloser to graph")
 	}
 
 	return nil
 }
 
-func updateOrderbookWithLedgerEntryChanges(graph OrderBookGraph, changes xdr.LedgerEntryChanges) error {
+func updateOrderbookWithLedgerEntryChanges(batch BatchedUpdates, changes xdr.LedgerEntryChanges) {
 	for _, change := range changes {
 		var offer xdr.OfferEntry
 		var ok bool
@@ -58,9 +62,7 @@ func updateOrderbookWithLedgerEntryChanges(graph OrderBookGraph, changes xdr.Led
 			if !ok {
 				continue
 			}
-			if err := graph.Remove(offerKey.OfferId); err != nil {
-				return errors.Wrap(err, "could not remove offer from ledger entry changes")
-			}
+			batch.RemoveOffer(offerKey.OfferId)
 			continue
 		case xdr.LedgerEntryChangeTypeLedgerEntryState:
 			offer, ok = change.State.Data.GetOffer()
@@ -71,14 +73,12 @@ func updateOrderbookWithLedgerEntryChanges(graph OrderBookGraph, changes xdr.Led
 			continue
 		}
 
-		if err := graph.Add(offer); err != nil {
-			return errors.Wrap(err, "could not add offer from ledger entry changes")
-		}
+		batch.AddOffer(offer)
 	}
-	return nil
 }
 
-func updateOrderbookWithLedgerStream(graph OrderBookGraph, reader ingest.LedgerReadCloser) error {
+func updateOrderbookWithLedgerStream(graph *OrderBookGraph, reader ingest.LedgerReadCloser) error {
+	batch := graph.Batch()
 	for {
 		entry, err := reader.Read()
 		if err != nil {
@@ -93,20 +93,18 @@ func updateOrderbookWithLedgerStream(graph OrderBookGraph, reader ingest.LedgerR
 			continue
 		}
 
-		if err := updateOrderbookWithLedgerEntryChanges(graph, entry.FeeChanges); err != nil {
-			return errors.Wrap(err, "could not parse fee changes")
-		}
+		updateOrderbookWithLedgerEntryChanges(batch, entry.FeeChanges)
 
 		if v1Meta, ok := entry.Meta.GetV1(); ok {
-			if err := updateOrderbookWithLedgerEntryChanges(graph, v1Meta.TxChanges); err != nil {
-				return errors.Wrap(err, "could not parse tx changes")
-			}
+			updateOrderbookWithLedgerEntryChanges(batch, v1Meta.TxChanges)
 			for _, operation := range v1Meta.Operations {
-				if err := updateOrderbookWithLedgerEntryChanges(graph, operation.Changes); err != nil {
-					return errors.Wrap(err, "could not parse operations meta")
-				}
+				updateOrderbookWithLedgerEntryChanges(batch, operation.Changes)
 			}
 		}
+	}
+
+	if err := batch.Apply(); err != nil {
+		return errors.Wrap(err, "could not apply updates from LedgerReadCloser to graph")
 	}
 
 	return nil

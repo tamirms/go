@@ -1,41 +1,37 @@
 package main
 
 import (
-	"encoding/base64"
+	"math/big"
 	"sort"
+	"sync"
 
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/xdr"
 )
 
 var (
-	errOfferNotPresent               = errors.New("offer is not present in the order book graph")
-	errorInvalidAccountID            = errors.New("account id is not Ed25519")
-	errorEmptyOffers                 = errors.New("offers is empty")
-	errorAssetAmountIsZero           = errors.New("current asset amount is 0")
-	errorOfferPriceDeonminatorIsZero = errors.New("denominator of offer price is 0")
+	errOfferNotPresent             = errors.New("offer is not present in the order book graph")
+	errEmptyOffers                 = errors.New("offers is empty")
+	errAssetAmountIsZero           = errors.New("current asset amount is 0")
+	errOfferPriceDenominatorIsZero = errors.New("denominator of offer price is 0")
+	errBatchAlreadyApplied         = errors.New("cannot apply batched updates more than once")
 )
 
-func assetAsString(asset xdr.Asset) (string, error) {
-	serialized, err := asset.MarshalBinary()
-	if err != nil {
-		return "", errors.Wrap(
-			err,
-			"could not marshal offer to graph key",
-		)
-	}
-	return base64.StdEncoding.EncodeToString(serialized), nil
-}
+const (
+	_                        = iota
+	addOfferOperationType    = iota
+	removeOfferOperationType = iota
+)
 
 // edgeSet maps an asset to all offers which buy that asset
-// note that each key in the map is a base 64 encoding of a serialized xdr.Asset
+// note that each key in the map is obtained by calling offer.Buying.String()
 // also, the offers are sorted by price (in terms of the buying asset)
 // from cheapest to expensive
 type edgeSet map[string][]xdr.OfferEntry
 
 // add will insert the given offer into the edge set
-// buyingAsset is the base 64 encoding of the serialized offer.Buying struct
-func (e edgeSet) add(offer xdr.OfferEntry, buyingAsset string) {
+func (e edgeSet) add(offer xdr.OfferEntry) {
+	buyingAsset := offer.Buying.String()
 	// offers is sorted by cheapest to most expensive price to convert buyingAsset to sellingAsset
 	offers := e[buyingAsset]
 	if len(offers) == 0 {
@@ -45,14 +41,8 @@ func (e edgeSet) add(offer xdr.OfferEntry, buyingAsset string) {
 
 	// find the smallest i such that Price of offers[i] >  Price of offer
 	insertIndex := sort.Search(len(offers), func(i int) bool {
-		// Price of offers[i] >  Price of offer
-		//  <==>
-		// (offers[i].Price.N / offers[i].Price.D) > (offer.Price.N / offer.Price.D)
-		//  <==>
-		// (offers[i].Price.N / offers[i].Price.D) * (offers[i].Price.D * offer.Price.D) > (offer.Price.N / offer.Price.D) * (offers[i].Price.D * offer.Price.D)
-		//  <==>
-		// offers[i].Price.N  * offer.Price.D > offer.Price.N * offers[i].Price.D
-		return uint64(offers[i].Price.N)*uint64(offer.Price.D) > uint64(offer.Price.N)*uint64(offers[i].Price.D)
+		return big.NewRat(int64(offers[i].Price.N), int64(offers[i].Price.D)).
+			Cmp(big.NewRat(int64(offer.Price.N), int64(offer.Price.D))) > 0
 	})
 
 	offers = append(offers, offer)
@@ -65,76 +55,150 @@ func (e edgeSet) add(offer xdr.OfferEntry, buyingAsset string) {
 }
 
 // remove will delete the given offer from the edge set
-// buyingAsset is the base 64 encoding of the serialized offer.Buying struct
+// buyingAsset is obtained by calling offer.Buying.String()
 func (e edgeSet) remove(offerID xdr.Int64, buyingAsset string) bool {
 	edges := e[buyingAsset]
-	if len(edges) > 0 {
-		contains := false
-
-		for i := 0; i < len(edges); i++ {
-			if edges[i].OfferId == offerID {
-				contains = true
-				for j := i + 1; j < len(edges); j++ {
-					edges[i] = edges[j]
-					i++
-				}
-				edges = edges[0 : len(edges)-1]
-				break
-			}
-		}
-		if contains {
-			if len(edges) == 0 {
-				delete(e, buyingAsset)
-			} else {
-				e[buyingAsset] = edges
-			}
-		}
-
-		return contains
+	if len(edges) == 0 {
+		return false
 	}
-	return false
+	contains := false
+
+	for i := 0; i < len(edges); i++ {
+		if edges[i].OfferId == offerID {
+			contains = true
+			for j := i + 1; j < len(edges); j++ {
+				edges[i] = edges[j]
+				i++
+			}
+			edges = edges[0 : len(edges)-1]
+			break
+		}
+	}
+	if contains {
+		if len(edges) == 0 {
+			delete(e, buyingAsset)
+		} else {
+			e[buyingAsset] = edges
+		}
+	}
+
+	return contains
+}
+
+// BatchedUpdates is an interface for applying multiple
+// operations on an order book
+type BatchedUpdates interface {
+	// AddOffer will queue an operation to add the given offer to the order book
+	AddOffer(offer xdr.OfferEntry) BatchedUpdates
+	// AddOffer will queue an operation to remove the given offer from the order book
+	RemoveOffer(offerID xdr.Int64) BatchedUpdates
+	// Apply will attempt to apply all the updates in the batch to the order book
+	Apply() error
+}
+
+type orderBookOperation struct {
+	operationType int
+	offerID       xdr.Int64
+	offer         *xdr.OfferEntry
+}
+
+type orderBookBatchedUpdates struct {
+	operations []orderBookOperation
+	orderbook  *OrderBookGraph
+	committed  bool
+}
+
+// AddOffer will queue an operation to add the given offer to the order book
+func (tx *orderBookBatchedUpdates) AddOffer(offer xdr.OfferEntry) BatchedUpdates {
+	tx.operations = append(tx.operations, orderBookOperation{
+		operationType: addOfferOperationType,
+		offerID:       offer.OfferId,
+		offer:         &offer,
+	})
+
+	return tx
+}
+
+// AddOffer will queue an operation to remove the given offer from the order book
+func (tx *orderBookBatchedUpdates) RemoveOffer(offerID xdr.Int64) BatchedUpdates {
+	tx.operations = append(tx.operations, orderBookOperation{
+		operationType: removeOfferOperationType,
+		offerID:       offerID,
+	})
+
+	return tx
+}
+
+// Apply will attempt to apply all the updates in the batch to the order book
+func (tx *orderBookBatchedUpdates) Apply() error {
+	tx.orderbook.lock.Lock()
+	defer tx.orderbook.lock.Unlock()
+	if tx.committed {
+		return errBatchAlreadyApplied
+	}
+	tx.committed = true
+
+	for _, operation := range tx.operations {
+		switch operation.operationType {
+		case addOfferOperationType:
+			if err := tx.orderbook.add(*operation.offer); err != nil {
+				return errors.Wrap(err, "could not apply update in batch")
+			}
+		case removeOfferOperationType:
+			if err := tx.orderbook.remove(operation.offerID); err != nil {
+				return errors.Wrap(err, "could not apply update in batch")
+			}
+		}
+	}
+
+	return nil
 }
 
 // trading pair represents two assets that can be exchanged if an order is fulfilled
 type tradingPair struct {
-	// buyingAsset is a base 64 encoding of a serialized xdr.Asset struct
+	// buyingAsset is obtained by calling offer.Buying.String() where offer is an xdr.OfferEntry
 	buyingAsset string
-	// sellingAsset is a base 64 encoding of a serialized xdr.Asset struct
+	// sellingAsset is obtained by calling offer.Selling.String() where offer is an xdr.OfferEntry
 	sellingAsset string
 }
 
 // OrderBookGraph is an in memory graph representation of all the offers in the stellar ledger
 type OrderBookGraph struct {
 	// edgesForSellingAsset maps an asset to all offers which sell that asset
-	// note that each key in the map is a base 64 encoding of a serialized xdr.Asset
+	// note that each key in the map is obtained by calling offer.Selling.String()
+	// where offer is an xdr.OfferEntry
 	edgesForSellingAsset map[string]edgeSet
-	// tradingPairForOffer maps an offer id to the base 64 encoded assets which are
-	// being exchanged in the given offer
+	// tradingPairForOffer maps an offer id to the assets which are being exchanged
+	// in the given offer
 	tradingPairForOffer map[xdr.Int64]tradingPair
+	lock                sync.RWMutex
 }
 
 // NewOrderBookGraph constructs a new OrderBookGraph
-func NewOrderBookGraph() OrderBookGraph {
-	return OrderBookGraph{
+func NewOrderBookGraph() *OrderBookGraph {
+	return &OrderBookGraph{
 		edgesForSellingAsset: map[string]edgeSet{},
 		tradingPairForOffer:  map[xdr.Int64]tradingPair{},
 	}
 }
 
-// Add inserts a given offer into the order book graph
-func (graph OrderBookGraph) Add(offer xdr.OfferEntry) error {
-	buyingAsset, err := assetAsString(offer.Buying)
-	if err != nil {
-		return errors.Wrap(err, "could not insert offer to order book graph")
+// Batch creates a new batch of order book updates which can be applied
+// on this graph
+func (graph *OrderBookGraph) Batch() BatchedUpdates {
+	return &orderBookBatchedUpdates{
+		operations: []orderBookOperation{},
+		committed:  false,
+		orderbook:  graph,
 	}
+}
 
-	sellingAsset, err := assetAsString(offer.Selling)
-	if err != nil {
-		return errors.Wrap(err, "could not insert offer to order book graph")
-	}
+// add inserts a given offer into the order book graph
+func (graph *OrderBookGraph) add(offer xdr.OfferEntry) error {
+	buyingAsset := offer.Buying.String()
+	sellingAsset := offer.Selling.String()
 
 	if _, contains := graph.tradingPairForOffer[offer.OfferId]; contains {
-		if err := graph.Remove(offer.OfferId); err != nil {
+		if err := graph.remove(offer.OfferId); err != nil {
 			return errors.Wrap(err, "could not update offer in order book graph")
 		}
 	}
@@ -145,16 +209,16 @@ func (graph OrderBookGraph) Add(offer xdr.OfferEntry) error {
 	}
 	if set, ok := graph.edgesForSellingAsset[sellingAsset]; !ok {
 		graph.edgesForSellingAsset[sellingAsset] = edgeSet{}
-		graph.edgesForSellingAsset[sellingAsset].add(offer, buyingAsset)
+		graph.edgesForSellingAsset[sellingAsset].add(offer)
 	} else {
-		set.add(offer, buyingAsset)
+		set.add(offer)
 	}
 
 	return nil
 }
 
-// Remove deletes a given offer from the order book graph
-func (graph OrderBookGraph) Remove(offerID xdr.Int64) error {
+// remove deletes a given offer from the order book graph
+func (graph *OrderBookGraph) remove(offerID xdr.Int64) error {
 	pair, ok := graph.tradingPairForOffer[offerID]
 	if !ok {
 		return errOfferNotPresent
@@ -176,12 +240,19 @@ func (graph OrderBookGraph) Remove(offerID xdr.Int64) error {
 // Path represents a payment path from a source asset to some destination asset
 type Path struct {
 	SourceAmount      xdr.Int64
-	SourceAssetString string
 	SourceAsset       xdr.Asset
 	InteriorNodes     []xdr.Asset
+	DestinationAsset  xdr.Asset
+	DestinationAmount xdr.Int64
 }
 
-func (graph OrderBookGraph) findPaths(
+// findPaths performs a DFS of maxPathLength depth
+// the DFS maintains the following invariants:
+// no node is repeated
+// no offers are consumed from the `ignoreOffersFrom` account
+// each payment path must originate with an asset in `targetAssets`
+// also, the required source asset amount cannot exceed the balance in `targetAssets`
+func (graph *OrderBookGraph) findPaths(
 	maxPathLength int,
 	visited map[string]bool,
 	visitedList []xdr.Asset,
@@ -222,10 +293,9 @@ func (graph OrderBookGraph) findPaths(
 		}
 
 		paths = append(paths, Path{
-			SourceAssetString: currentAssetString,
-			SourceAmount:      currentAssetAmount,
-			SourceAsset:       currentAsset,
-			InteriorNodes:     interiorNodes,
+			SourceAmount:  currentAssetAmount,
+			SourceAsset:   currentAsset,
+			InteriorNodes: interiorNodes,
 		})
 	}
 
@@ -266,7 +336,9 @@ func (graph OrderBookGraph) findPaths(
 	return paths, nil
 }
 
-func (graph OrderBookGraph) FindPaths(
+// FindPaths returns a list of payment paths originating from a source account
+// and ending with a given destinaton asset and amount.
+func (graph *OrderBookGraph) FindPaths(
 	maxPathLength int,
 	destinationAsset xdr.Asset,
 	destinationAmount xdr.Int64,
@@ -275,16 +347,13 @@ func (graph OrderBookGraph) FindPaths(
 	sourceAssetBalances []xdr.Int64,
 	maxAssetsPerPath int,
 ) ([]Path, error) {
-	destinationAssetString, err := assetAsString(destinationAsset)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not serialize destination asset")
-	}
+	graph.lock.RLock()
+	defer graph.lock.RUnlock()
+
+	destinationAssetString := destinationAsset.String()
 	sourceAssetsMap := map[string]xdr.Int64{}
 	for i, sourceAsset := range sourceAssets {
-		sourceAssetString, err := assetAsString(sourceAsset)
-		if err != nil {
-			return nil, errors.Wrap(err, "could not serialize source asset")
-		}
+		sourceAssetString := sourceAsset.String()
 		sourceAssetsMap[sourceAssetString] = sourceAssetBalances[i]
 	}
 	allPaths, err := graph.findPaths(
@@ -302,27 +371,18 @@ func (graph OrderBookGraph) FindPaths(
 		return nil, errors.Wrap(err, "could not determine paths")
 	}
 
-	return sortAndFilterPaths(allPaths, maxAssetsPerPath), nil
-}
-
-func accountIDEquals(a, b xdr.AccountId) (bool, error) {
-	result, ok := a.GetEd25519()
-	if !ok {
-		return false, errorInvalidAccountID
-	}
-	other, ok := b.GetEd25519()
-	if !ok {
-		return false, errorInvalidAccountID
-	}
-	return result == other, nil
+	return includeDestinationInPaths(
+		sortAndFilterPaths(allPaths, maxAssetsPerPath),
+		destinationAsset,
+		destinationAmount,
+	), nil
 }
 
 func divideCeil(numerator, denominator xdr.Int64) xdr.Int64 {
 	if numerator%denominator == 0 {
 		return numerator / denominator
-	} else {
-		return (numerator / denominator) + 1
 	}
+	return (numerator / denominator) + 1
 }
 
 func consumeOffers(
@@ -333,23 +393,19 @@ func consumeOffers(
 	totalConsumed := xdr.Int64(0)
 
 	if len(offers) == 0 {
-		return totalConsumed, errorEmptyOffers
+		return totalConsumed, errEmptyOffers
 	}
 
 	if currentAssetAmount == 0 {
-		return totalConsumed, errorAssetAmountIsZero
+		return totalConsumed, errAssetAmountIsZero
 	}
 
 	for _, offer := range offers {
-		equal, err := accountIDEquals(offer.SellerId, ignoreOffersFrom)
-		if err != nil {
-			return -1, err
-		}
-		if equal {
+		if offer.SellerId.Equals(ignoreOffersFrom) {
 			continue
 		}
 		if offer.Price.D == 0 {
-			return -1, errorOfferPriceDeonminatorIsZero
+			return -1, errOfferPriceDenominatorIsZero
 		}
 		if offer.Amount >= currentAssetAmount {
 			totalConsumed += divideCeil(currentAssetAmount*xdr.Int64(offer.Price.N), xdr.Int64(offer.Price.D))
@@ -366,24 +422,27 @@ func consumeOffers(
 	return -1, nil
 }
 
+// sortAndFilterPaths sorts the given list of paths by
+// source asset, source asset amount, and path length
+// also, we limit the number of paths with the same source asset to maxPathsPerAsset
 func sortAndFilterPaths(
 	allPaths []Path,
 	maxPathsPerAsset int,
 ) []Path {
 	sort.Slice(allPaths, func(i, j int) bool {
-		if allPaths[i].SourceAssetString == allPaths[j].SourceAssetString {
+		if allPaths[i].SourceAsset.Equals(allPaths[j].SourceAsset) {
 			if allPaths[i].SourceAmount == allPaths[j].SourceAmount {
 				return len(allPaths[i].InteriorNodes) < len(allPaths[j].InteriorNodes)
 			}
 			return allPaths[i].SourceAmount < allPaths[j].SourceAmount
 		}
-		return allPaths[i].SourceAssetString < allPaths[j].SourceAssetString
+		return allPaths[i].SourceAsset.String() < allPaths[j].SourceAsset.String()
 	})
 
 	filtered := []Path{}
 	countForAsset := 0
 	for _, entry := range allPaths {
-		if len(filtered) == 0 || filtered[len(filtered)-1].SourceAssetString != entry.SourceAssetString {
+		if len(filtered) == 0 || !filtered[len(filtered)-1].SourceAsset.Equals(entry.SourceAsset) {
 			countForAsset = 1
 			filtered = append(filtered, entry)
 		} else if countForAsset < maxPathsPerAsset {
@@ -393,4 +452,16 @@ func sortAndFilterPaths(
 	}
 
 	return filtered
+}
+
+func includeDestinationInPaths(
+	paths []Path,
+	destinationAsset xdr.Asset,
+	destinationAmount xdr.Int64,
+) []Path {
+	for i := 0; i < len(paths); i++ {
+		paths[i].DestinationAsset = destinationAsset
+		paths[i].DestinationAmount = destinationAmount
+	}
+	return paths
 }

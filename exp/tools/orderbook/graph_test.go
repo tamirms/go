@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding"
+	"strings"
 	"testing"
 
 	"github.com/stellar/go/keypair"
@@ -15,7 +16,6 @@ var (
 	nativeAsset = xdr.Asset{
 		Type: xdr.AssetTypeAssetTypeNative,
 	}
-	nativeAssetString, _ = assetAsString(nativeAsset)
 
 	usdAsset = xdr.Asset{
 		Type: xdr.AssetTypeAssetTypeCreditAlphanum4,
@@ -24,7 +24,6 @@ var (
 			Issuer:    issuer,
 		},
 	}
-	usdAssetString, _ = assetAsString(usdAsset)
 
 	eurAsset = xdr.Asset{
 		Type: xdr.AssetTypeAssetTypeCreditAlphanum4,
@@ -33,7 +32,6 @@ var (
 			Issuer:    issuer,
 		},
 	}
-	eurAssetString, _ = assetAsString(eurAsset)
 
 	chfAsset = xdr.Asset{
 		Type: xdr.AssetTypeAssetTypeCreditAlphanum4,
@@ -42,7 +40,6 @@ var (
 			Issuer:    issuer,
 		},
 	}
-	chfAssetString, _ = assetAsString(chfAsset)
 
 	yenAsset = xdr.Asset{
 		Type: xdr.AssetTypeAssetTypeCreditAlphanum4,
@@ -51,7 +48,6 @@ var (
 			Issuer:    issuer,
 		},
 	}
-	yenAssetString, _ = assetAsString(yenAsset)
 
 	fiftyCentsOffer = xdr.OfferEntry{
 		SellerId: issuer,
@@ -147,7 +143,7 @@ func assertOfferListEquals(t *testing.T, a, b []xdr.OfferEntry) {
 	}
 }
 
-func assertGraphEquals(t *testing.T, a, b OrderBookGraph) {
+func assertGraphEquals(t *testing.T, a, b *OrderBookGraph) {
 	if len(a.edgesForSellingAsset) != len(b.edgesForSellingAsset) {
 		t.Fatalf("expected edges to have same length but got %v %v", a, b)
 	}
@@ -209,18 +205,24 @@ func assertPathEquals(t *testing.T, a, b []Path) {
 		if a[i].SourceAmount != b[i].SourceAmount {
 			t.Fatalf("expected paths to be same got %v %v", a, b)
 		}
-		if a[i].SourceAssetString != b[i].SourceAssetString {
+		if a[i].DestinationAmount != b[i].DestinationAmount {
 			t.Fatalf("expected paths to be same got %v %v", a, b)
 		}
-
-		assertBinaryMarshalerEquals(t, a[i].SourceAsset, b[i].SourceAsset)
+		if !a[i].DestinationAsset.Equals(b[i].DestinationAsset) {
+			t.Fatalf("expected paths to be same got %v %v", a, b)
+		}
+		if !a[i].SourceAsset.Equals(b[i].SourceAsset) {
+			t.Fatalf("expected paths to be same got %v %v", a, b)
+		}
 
 		if len(a[i].InteriorNodes) != len(b[i].InteriorNodes) {
 			t.Fatalf("expected paths to be same got %v %v", a, b)
 		}
 
 		for j := 0; j > len(a[i].InteriorNodes); j++ {
-			assertBinaryMarshalerEquals(t, a[i].InteriorNodes[j], b[i].InteriorNodes[j])
+			if !a[i].InteriorNodes[j].Equals(b[i].InteriorNodes[j]) {
+				t.Fatalf("expected paths to be same got %v %v", a, b)
+			}
 		}
 	}
 }
@@ -228,24 +230,24 @@ func assertPathEquals(t *testing.T, a, b []Path) {
 func TestAddEdgeSet(t *testing.T) {
 	set := edgeSet{}
 
-	set.add(dollarOffer, usdAssetString)
-	set.add(eurOffer, eurAssetString)
-	set.add(twoEurOffer, eurAssetString)
-	set.add(threeEurOffer, eurAssetString)
-	set.add(quarterOffer, usdAssetString)
-	set.add(fiftyCentsOffer, usdAssetString)
+	set.add(dollarOffer)
+	set.add(eurOffer)
+	set.add(twoEurOffer)
+	set.add(threeEurOffer)
+	set.add(quarterOffer)
+	set.add(fiftyCentsOffer)
 
 	if len(set) != 2 {
 		t.Fatalf("expected set to have 2 entries but got %v", set)
 	}
 
-	assertOfferListEquals(t, set[usdAssetString], []xdr.OfferEntry{
+	assertOfferListEquals(t, set[usdAsset.String()], []xdr.OfferEntry{
 		quarterOffer,
 		fiftyCentsOffer,
 		dollarOffer,
 	})
 
-	assertOfferListEquals(t, set[eurAssetString], []xdr.OfferEntry{
+	assertOfferListEquals(t, set[eurAsset.String()], []xdr.OfferEntry{
 		eurOffer,
 		twoEurOffer,
 		threeEurOffer,
@@ -255,36 +257,36 @@ func TestAddEdgeSet(t *testing.T) {
 func TestRemoveEdgeSet(t *testing.T) {
 	set := edgeSet{}
 
-	if contains := set.remove(dollarOffer.OfferId, usdAssetString); contains {
+	if contains := set.remove(dollarOffer.OfferId, usdAsset.String()); contains {
 		t.Fatal("expected set to not contain asset")
 	}
 
-	set.add(dollarOffer, usdAssetString)
-	set.add(eurOffer, eurAssetString)
-	set.add(twoEurOffer, eurAssetString)
-	set.add(threeEurOffer, eurAssetString)
-	set.add(quarterOffer, usdAssetString)
-	set.add(fiftyCentsOffer, usdAssetString)
+	set.add(dollarOffer)
+	set.add(eurOffer)
+	set.add(twoEurOffer)
+	set.add(threeEurOffer)
+	set.add(quarterOffer)
+	set.add(fiftyCentsOffer)
 
-	if contains := set.remove(dollarOffer.OfferId, usdAssetString); !contains {
+	if contains := set.remove(dollarOffer.OfferId, usdAsset.String()); !contains {
 		t.Fatal("expected set to contain dollar offer")
 	}
 
-	if contains := set.remove(dollarOffer.OfferId, usdAssetString); contains {
+	if contains := set.remove(dollarOffer.OfferId, usdAsset.String()); contains {
 		t.Fatal("expected set to not contain dollar offer after it has been deleted")
 	}
 
-	if contains := set.remove(threeEurOffer.OfferId, eurAssetString); !contains {
+	if contains := set.remove(threeEurOffer.OfferId, eurAsset.String()); !contains {
 		t.Fatal("expected set to contain three euro offer")
 	}
-	if contains := set.remove(eurOffer.OfferId, eurAssetString); !contains {
+	if contains := set.remove(eurOffer.OfferId, eurAsset.String()); !contains {
 		t.Fatal("expected set to contain euro offer")
 	}
-	if contains := set.remove(twoEurOffer.OfferId, eurAssetString); !contains {
+	if contains := set.remove(twoEurOffer.OfferId, eurAsset.String()); !contains {
 		t.Fatal("expected set to contain two euro offer")
 	}
 
-	if contains := set.remove(eurOffer.OfferId, eurAssetString); contains {
+	if contains := set.remove(eurOffer.OfferId, eurAsset.String()); contains {
 		t.Fatal("expected set to not contain euro offer after it has been deleted")
 	}
 
@@ -292,31 +294,60 @@ func TestRemoveEdgeSet(t *testing.T) {
 		t.Fatalf("expected set to have 1 entry but got %v", set)
 	}
 
-	assertOfferListEquals(t, set[usdAssetString], []xdr.OfferEntry{
+	assertOfferListEquals(t, set[usdAsset.String()], []xdr.OfferEntry{
 		quarterOffer,
 		fiftyCentsOffer,
 	})
 }
 
+func TestApplyTwice(t *testing.T) {
+	graph := NewOrderBookGraph()
+
+	batch := graph.Batch()
+	err := batch.
+		AddOffer(dollarOffer).
+		AddOffer(threeEurOffer).
+		AddOffer(eurOffer).
+		AddOffer(twoEurOffer).
+		AddOffer(quarterOffer).
+		AddOffer(fiftyCentsOffer).
+		Apply()
+	if err != nil {
+		t.Fatalf("unexpected error %v", err)
+	}
+
+	err = batch.Apply()
+	if err != errBatchAlreadyApplied {
+		t.Fatalf("expected error %v but got %v", errBatchAlreadyApplied, err)
+	}
+
+	batch = graph.Batch()
+	err = batch.
+		AddOffer(dollarOffer).
+		RemoveOffer(123456).
+		Apply()
+	if err == nil || !strings.Contains(err.Error(), errOfferNotPresent.Error()) {
+		t.Fatalf("expected error %v but got %v", errOfferNotPresent, err)
+	}
+
+	err = batch.Apply()
+	if err != errBatchAlreadyApplied {
+		t.Fatalf("expected error %v but got %v", errBatchAlreadyApplied, err)
+	}
+}
+
 func TestAddOfferOrderBook(t *testing.T) {
 	graph := NewOrderBookGraph()
 
-	if err := graph.Add(dollarOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(threeEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(eurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(twoEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(quarterOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(fiftyCentsOffer); err != nil {
+	err := graph.Batch().
+		AddOffer(dollarOffer).
+		AddOffer(threeEurOffer).
+		AddOffer(eurOffer).
+		AddOffer(twoEurOffer).
+		AddOffer(quarterOffer).
+		AddOffer(fiftyCentsOffer).
+		Apply()
+	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
@@ -355,95 +386,89 @@ func TestAddOfferOrderBook(t *testing.T) {
 		Amount: xdr.Int64(500),
 	}
 
-	if err := graph.Add(eurUsdOffer); err != nil {
+	err = graph.Batch().
+		AddOffer(eurUsdOffer).
+		AddOffer(otherEurUsdOffer).
+		AddOffer(usdEurOffer).
+		Apply()
+	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
-	if err := graph.Add(otherEurUsdOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-
-	if err := graph.Add(usdEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-
-	expectedGraph := OrderBookGraph{
+	expectedGraph := &OrderBookGraph{
 		edgesForSellingAsset: map[string]edgeSet{
-			nativeAssetString: edgeSet{
-				usdAssetString: []xdr.OfferEntry{
+			nativeAsset.String(): edgeSet{
+				usdAsset.String(): []xdr.OfferEntry{
 					quarterOffer,
 					fiftyCentsOffer,
 					dollarOffer,
 				},
-				eurAssetString: []xdr.OfferEntry{
+				eurAsset.String(): []xdr.OfferEntry{
 					eurOffer,
 					twoEurOffer,
 					threeEurOffer,
 				},
 			},
-			usdAssetString: edgeSet{
-				eurAssetString: []xdr.OfferEntry{
+			usdAsset.String(): edgeSet{
+				eurAsset.String(): []xdr.OfferEntry{
 					eurUsdOffer,
 					otherEurUsdOffer,
 				},
 			},
-			eurAssetString: edgeSet{
-				usdAssetString: []xdr.OfferEntry{
+			eurAsset.String(): edgeSet{
+				usdAsset.String(): []xdr.OfferEntry{
 					usdEurOffer,
 				},
 			},
 		},
 		tradingPairForOffer: map[xdr.Int64]tradingPair{
 			quarterOffer.OfferId: tradingPair{
-				buyingAsset:  usdAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  usdAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			fiftyCentsOffer.OfferId: tradingPair{
-				buyingAsset:  usdAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  usdAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			dollarOffer.OfferId: tradingPair{
-				buyingAsset:  usdAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  usdAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			eurOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			twoEurOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			threeEurOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			eurUsdOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: usdAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: usdAsset.String(),
 			},
 			otherEurUsdOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: usdAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: usdAsset.String(),
 			},
 			usdEurOffer.OfferId: tradingPair{
-				buyingAsset:  usdAssetString,
-				sellingAsset: eurAssetString,
+				buyingAsset:  usdAsset.String(),
+				sellingAsset: eurAsset.String(),
 			},
 		},
 	}
 
 	// adding the same orders multiple times should have no effect
-	if err := graph.Add(otherEurUsdOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(usdEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(dollarOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(threeEurOffer); err != nil {
+	err = graph.Batch().
+		AddOffer(otherEurUsdOffer).
+		AddOffer(usdEurOffer).
+		AddOffer(dollarOffer).
+		AddOffer(threeEurOffer).
+		Apply()
+	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
@@ -453,22 +478,15 @@ func TestAddOfferOrderBook(t *testing.T) {
 func TestUpdateOfferOrderBook(t *testing.T) {
 	graph := NewOrderBookGraph()
 
-	if err := graph.Add(dollarOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(threeEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(eurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(twoEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(quarterOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(fiftyCentsOffer); err != nil {
+	err := graph.Batch().
+		AddOffer(dollarOffer).
+		AddOffer(threeEurOffer).
+		AddOffer(eurOffer).
+		AddOffer(twoEurOffer).
+		AddOffer(quarterOffer).
+		AddOffer(fiftyCentsOffer).
+		Apply()
+	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
@@ -507,15 +525,12 @@ func TestUpdateOfferOrderBook(t *testing.T) {
 		Amount: xdr.Int64(500),
 	}
 
-	if err := graph.Add(eurUsdOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-
-	if err := graph.Add(otherEurUsdOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-
-	if err := graph.Add(usdEurOffer); err != nil {
+	err = graph.Batch().
+		AddOffer(eurUsdOffer).
+		AddOffer(otherEurUsdOffer).
+		AddOffer(usdEurOffer).
+		Apply()
+	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
@@ -527,78 +542,77 @@ func TestUpdateOfferOrderBook(t *testing.T) {
 
 	dollarOffer.Amount = 12
 
-	if err := graph.Add(usdEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(otherEurUsdOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(dollarOffer); err != nil {
+	err = graph.Batch().
+		AddOffer(usdEurOffer).
+		AddOffer(otherEurUsdOffer).
+		AddOffer(dollarOffer).
+		Apply()
+	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
-	expectedGraph := OrderBookGraph{
+	expectedGraph := &OrderBookGraph{
 		edgesForSellingAsset: map[string]edgeSet{
-			nativeAssetString: edgeSet{
-				usdAssetString: []xdr.OfferEntry{
+			nativeAsset.String(): edgeSet{
+				usdAsset.String(): []xdr.OfferEntry{
 					quarterOffer,
 					fiftyCentsOffer,
 					dollarOffer,
 				},
-				eurAssetString: []xdr.OfferEntry{
+				eurAsset.String(): []xdr.OfferEntry{
 					eurOffer,
 					twoEurOffer,
 					threeEurOffer,
 				},
 			},
-			usdAssetString: edgeSet{
-				eurAssetString: []xdr.OfferEntry{
+			usdAsset.String(): edgeSet{
+				eurAsset.String(): []xdr.OfferEntry{
 					otherEurUsdOffer,
 					eurUsdOffer,
 				},
 			},
-			eurAssetString: edgeSet{
-				usdAssetString: []xdr.OfferEntry{
+			eurAsset.String(): edgeSet{
+				usdAsset.String(): []xdr.OfferEntry{
 					usdEurOffer,
 				},
 			},
 		},
 		tradingPairForOffer: map[xdr.Int64]tradingPair{
 			quarterOffer.OfferId: tradingPair{
-				buyingAsset:  usdAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  usdAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			fiftyCentsOffer.OfferId: tradingPair{
-				buyingAsset:  usdAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  usdAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			dollarOffer.OfferId: tradingPair{
-				buyingAsset:  usdAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  usdAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			eurOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			twoEurOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			threeEurOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			eurUsdOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: usdAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: usdAsset.String(),
 			},
 			otherEurUsdOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: usdAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: usdAsset.String(),
 			},
 			usdEurOffer.OfferId: tradingPair{
-				buyingAsset:  usdAssetString,
-				sellingAsset: eurAssetString,
+				buyingAsset:  usdAsset.String(),
+				sellingAsset: eurAsset.String(),
 			},
 		},
 	}
@@ -609,22 +623,15 @@ func TestUpdateOfferOrderBook(t *testing.T) {
 func TestRemoveOfferOrderBook(t *testing.T) {
 	graph := NewOrderBookGraph()
 
-	if err := graph.Add(dollarOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(threeEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(eurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(twoEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(quarterOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(fiftyCentsOffer); err != nil {
+	err := graph.Batch().
+		AddOffer(dollarOffer).
+		AddOffer(threeEurOffer).
+		AddOffer(eurOffer).
+		AddOffer(twoEurOffer).
+		AddOffer(quarterOffer).
+		AddOffer(fiftyCentsOffer).
+		Apply()
+	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
@@ -663,79 +670,75 @@ func TestRemoveOfferOrderBook(t *testing.T) {
 		Amount: xdr.Int64(500),
 	}
 
-	if err := graph.Add(eurUsdOffer); err != nil {
+	err = graph.Batch().
+		AddOffer(eurUsdOffer).
+		AddOffer(otherEurUsdOffer).
+		AddOffer(usdEurOffer).
+		RemoveOffer(usdEurOffer.OfferId).
+		RemoveOffer(otherEurUsdOffer.OfferId).
+		RemoveOffer(dollarOffer.OfferId).
+		Apply()
+	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
-	if err := graph.Add(otherEurUsdOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-
-	if err := graph.Add(usdEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-
-	if err := graph.Remove(usdEurOffer.OfferId); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Remove(otherEurUsdOffer.OfferId); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Remove(dollarOffer.OfferId); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-
-	if err := graph.Remove(dollarOffer.OfferId); err != errOfferNotPresent {
+	err = graph.Batch().
+		RemoveOffer(dollarOffer.OfferId).
+		Apply()
+	if err == nil || !strings.Contains(err.Error(), errOfferNotPresent.Error()) {
 		t.Fatalf("expected error %v but got %v", errOfferNotPresent, err)
 	}
 
-	if err := graph.Remove(123456); err != errOfferNotPresent {
+	err = graph.Batch().
+		RemoveOffer(123456).
+		Apply()
+	if err == nil || !strings.Contains(err.Error(), errOfferNotPresent.Error()) {
 		t.Fatalf("expected error %v but got %v", errOfferNotPresent, err)
 	}
 
-	expectedGraph := OrderBookGraph{
+	expectedGraph := &OrderBookGraph{
 		edgesForSellingAsset: map[string]edgeSet{
-			nativeAssetString: edgeSet{
-				usdAssetString: []xdr.OfferEntry{
+			nativeAsset.String(): edgeSet{
+				usdAsset.String(): []xdr.OfferEntry{
 					quarterOffer,
 					fiftyCentsOffer,
 				},
-				eurAssetString: []xdr.OfferEntry{
+				eurAsset.String(): []xdr.OfferEntry{
 					eurOffer,
 					twoEurOffer,
 					threeEurOffer,
 				},
 			},
-			usdAssetString: edgeSet{
-				eurAssetString: []xdr.OfferEntry{
+			usdAsset.String(): edgeSet{
+				eurAsset.String(): []xdr.OfferEntry{
 					eurUsdOffer,
 				},
 			},
 		},
 		tradingPairForOffer: map[xdr.Int64]tradingPair{
 			quarterOffer.OfferId: tradingPair{
-				buyingAsset:  usdAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  usdAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			fiftyCentsOffer.OfferId: tradingPair{
-				buyingAsset:  usdAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  usdAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			eurOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			twoEurOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			threeEurOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: nativeAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: nativeAsset.String(),
 			},
 			eurUsdOffer.OfferId: tradingPair{
-				buyingAsset:  eurAssetString,
-				sellingAsset: usdAssetString,
+				buyingAsset:  eurAsset.String(),
+				sellingAsset: usdAsset.String(),
 			},
 		},
 	}
@@ -774,7 +777,7 @@ func TestConsumeOffers(t *testing.T) {
 			issuer,
 			100,
 			0,
-			errorEmptyOffers,
+			errEmptyOffers,
 		},
 		{
 			"currentAssetAmount must be positive",
@@ -782,7 +785,7 @@ func TestConsumeOffers(t *testing.T) {
 			ignoreOffersFrom,
 			0,
 			0,
-			errorAssetAmountIsZero,
+			errAssetAmountIsZero,
 		},
 		{
 			"ignore all offers",
@@ -798,7 +801,7 @@ func TestConsumeOffers(t *testing.T) {
 			ignoreOffersFrom,
 			10000,
 			0,
-			errorOfferPriceDeonminatorIsZero,
+			errOfferPriceDenominatorIsZero,
 		},
 		{
 			"ignore some offers",
@@ -863,42 +866,36 @@ func TestConsumeOffers(t *testing.T) {
 func TestSortAndFilterPaths(t *testing.T) {
 	allPaths := []Path{
 		Path{
-			SourceAmount:      3,
-			SourceAsset:       eurAsset,
-			SourceAssetString: eurAssetString,
-			InteriorNodes:     []xdr.Asset{},
+			SourceAmount:  3,
+			SourceAsset:   eurAsset,
+			InteriorNodes: []xdr.Asset{},
 		},
 		Path{
-			SourceAmount:      4,
-			SourceAsset:       eurAsset,
-			SourceAssetString: eurAssetString,
-			InteriorNodes:     []xdr.Asset{},
+			SourceAmount:  4,
+			SourceAsset:   eurAsset,
+			InteriorNodes: []xdr.Asset{},
 		},
 		Path{
-			SourceAmount:      1,
-			SourceAsset:       usdAsset,
-			SourceAssetString: usdAssetString,
-			InteriorNodes:     []xdr.Asset{},
+			SourceAmount:  1,
+			SourceAsset:   usdAsset,
+			InteriorNodes: []xdr.Asset{},
 		},
 		Path{
-			SourceAmount:      2,
-			SourceAsset:       eurAsset,
-			SourceAssetString: eurAssetString,
-			InteriorNodes:     []xdr.Asset{},
+			SourceAmount:  2,
+			SourceAsset:   eurAsset,
+			InteriorNodes: []xdr.Asset{},
 		},
 		Path{
-			SourceAmount:      2,
-			SourceAsset:       eurAsset,
-			SourceAssetString: eurAssetString,
+			SourceAmount: 2,
+			SourceAsset:  eurAsset,
 			InteriorNodes: []xdr.Asset{
 				nativeAsset,
 			},
 		},
 		Path{
-			SourceAmount:      10,
-			SourceAsset:       nativeAsset,
-			SourceAssetString: nativeAssetString,
-			InteriorNodes:     []xdr.Asset{},
+			SourceAmount:  10,
+			SourceAsset:   nativeAsset,
+			InteriorNodes: []xdr.Asset{},
 		},
 	}
 	sortedAndFiltered := sortAndFilterPaths(
@@ -907,36 +904,31 @@ func TestSortAndFilterPaths(t *testing.T) {
 	)
 	expectedPaths := []Path{
 		Path{
-			SourceAmount:      10,
-			SourceAsset:       nativeAsset,
-			SourceAssetString: nativeAssetString,
-			InteriorNodes:     []xdr.Asset{},
+			SourceAmount:  2,
+			SourceAsset:   eurAsset,
+			InteriorNodes: []xdr.Asset{},
 		},
 		Path{
-			SourceAmount:      2,
-			SourceAsset:       eurAsset,
-			SourceAssetString: eurAssetString,
-			InteriorNodes:     []xdr.Asset{},
-		},
-		Path{
-			SourceAmount:      2,
-			SourceAsset:       eurAsset,
-			SourceAssetString: eurAssetString,
+			SourceAmount: 2,
+			SourceAsset:  eurAsset,
 			InteriorNodes: []xdr.Asset{
 				nativeAsset,
 			},
 		},
 		Path{
-			SourceAmount:      3,
-			SourceAsset:       eurAsset,
-			SourceAssetString: eurAssetString,
-			InteriorNodes:     []xdr.Asset{},
+			SourceAmount:  3,
+			SourceAsset:   eurAsset,
+			InteriorNodes: []xdr.Asset{},
 		},
 		Path{
-			SourceAmount:      1,
-			SourceAsset:       usdAsset,
-			SourceAssetString: usdAssetString,
-			InteriorNodes:     []xdr.Asset{},
+			SourceAmount:  1,
+			SourceAsset:   usdAsset,
+			InteriorNodes: []xdr.Asset{},
+		},
+		Path{
+			SourceAmount:  10,
+			SourceAsset:   nativeAsset,
+			InteriorNodes: []xdr.Asset{},
 		},
 	}
 
@@ -946,22 +938,15 @@ func TestSortAndFilterPaths(t *testing.T) {
 func TestFindPaths(t *testing.T) {
 	graph := NewOrderBookGraph()
 
-	if err := graph.Add(dollarOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(threeEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(eurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(twoEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(quarterOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-	if err := graph.Add(fiftyCentsOffer); err != nil {
+	err := graph.Batch().
+		AddOffer(dollarOffer).
+		AddOffer(threeEurOffer).
+		AddOffer(eurOffer).
+		AddOffer(twoEurOffer).
+		AddOffer(quarterOffer).
+		AddOffer(fiftyCentsOffer).
+		Apply()
+	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
@@ -1024,23 +1009,14 @@ func TestFindPaths(t *testing.T) {
 		Amount: xdr.Int64(500),
 	}
 
-	if err := graph.Add(eurUsdOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-
-	if err := graph.Add(otherEurUsdOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-
-	if err := graph.Add(usdEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-
-	if err := graph.Add(chfEurOffer); err != nil {
-		t.Fatalf("unexpected error %v", err)
-	}
-
-	if err := graph.Add(yenChfOffer); err != nil {
+	err = graph.Batch().
+		AddOffer(eurUsdOffer).
+		AddOffer(otherEurUsdOffer).
+		AddOffer(usdEurOffer).
+		AddOffer(chfEurOffer).
+		AddOffer(yenChfOffer).
+		Apply()
+	if err != nil {
 		t.Fatalf("unexpected error %v", err)
 	}
 
@@ -1078,25 +1054,28 @@ func TestFindPaths(t *testing.T) {
 		Path{
 			SourceAmount:      5,
 			SourceAsset:       usdAsset,
-			SourceAssetString: usdAssetString,
 			InteriorNodes:     []xdr.Asset{},
+			DestinationAsset:  nativeAsset,
+			DestinationAmount: 20,
 		},
 		Path{
-			SourceAmount:      7,
-			SourceAsset:       usdAsset,
-			SourceAssetString: usdAssetString,
+			SourceAmount: 7,
+			SourceAsset:  usdAsset,
 			InteriorNodes: []xdr.Asset{
 				eurAsset,
 			},
+			DestinationAsset:  nativeAsset,
+			DestinationAmount: 20,
 		},
 		Path{
-			SourceAmount:      5,
-			SourceAsset:       yenAsset,
-			SourceAssetString: yenAssetString,
+			SourceAmount: 5,
+			SourceAsset:  yenAsset,
 			InteriorNodes: []xdr.Asset{
 				eurAsset,
 				chfAsset,
 			},
+			DestinationAsset:  nativeAsset,
+			DestinationAmount: 20,
 		},
 	}
 
@@ -1122,35 +1101,39 @@ func TestFindPaths(t *testing.T) {
 		Path{
 			SourceAmount:      5,
 			SourceAsset:       usdAsset,
-			SourceAssetString: usdAssetString,
 			InteriorNodes:     []xdr.Asset{},
+			DestinationAsset:  nativeAsset,
+			DestinationAmount: 20,
 		},
 		Path{
-			SourceAmount:      7,
-			SourceAsset:       usdAsset,
-			SourceAssetString: usdAssetString,
+			SourceAmount: 7,
+			SourceAsset:  usdAsset,
 			InteriorNodes: []xdr.Asset{
 				eurAsset,
 			},
+			DestinationAsset:  nativeAsset,
+			DestinationAmount: 20,
 		},
 		Path{
-			SourceAmount:      2,
-			SourceAsset:       yenAsset,
-			SourceAssetString: yenAssetString,
+			SourceAmount: 2,
+			SourceAsset:  yenAsset,
 			InteriorNodes: []xdr.Asset{
 				usdAsset,
 				eurAsset,
 				chfAsset,
 			},
+			DestinationAsset:  nativeAsset,
+			DestinationAmount: 20,
 		},
 		Path{
-			SourceAmount:      5,
-			SourceAsset:       yenAsset,
-			SourceAssetString: yenAssetString,
+			SourceAmount: 5,
+			SourceAsset:  yenAsset,
 			InteriorNodes: []xdr.Asset{
 				eurAsset,
 				chfAsset,
 			},
+			DestinationAsset:  nativeAsset,
+			DestinationAmount: 20,
 		},
 	}
 
