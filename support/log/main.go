@@ -85,6 +85,11 @@ func WithField(key string, value interface{}) *Entry {
 	return result
 }
 
+func WithError(err error) *Entry {
+	result := DefaultLogger.WithError(err)
+	return result
+}
+
 func WithFields(fields F) *Entry {
 	return DefaultLogger.WithFields(fields)
 }
