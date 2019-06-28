@@ -230,12 +230,12 @@ func assertPathEquals(t *testing.T, a, b []Path) {
 func TestAddEdgeSet(t *testing.T) {
 	set := edgeSet{}
 
-	set.add(dollarOffer)
-	set.add(eurOffer)
-	set.add(twoEurOffer)
-	set.add(threeEurOffer)
-	set.add(quarterOffer)
-	set.add(fiftyCentsOffer)
+	set.add(dollarOffer, dollarOffer.Buying.String())
+	set.add(eurOffer, eurOffer.Buying.String())
+	set.add(twoEurOffer, twoEurOffer.Buying.String())
+	set.add(threeEurOffer, threeEurOffer.Buying.String())
+	set.add(quarterOffer, quarterOffer.Buying.String())
+	set.add(fiftyCentsOffer, fiftyCentsOffer.Buying.String())
 
 	if len(set) != 2 {
 		t.Fatalf("expected set to have 2 entries but got %v", set)
@@ -261,12 +261,12 @@ func TestRemoveEdgeSet(t *testing.T) {
 		t.Fatal("expected set to not contain asset")
 	}
 
-	set.add(dollarOffer)
-	set.add(eurOffer)
-	set.add(twoEurOffer)
-	set.add(threeEurOffer)
-	set.add(quarterOffer)
-	set.add(fiftyCentsOffer)
+	set.add(dollarOffer, dollarOffer.Buying.String())
+	set.add(eurOffer, eurOffer.Buying.String())
+	set.add(twoEurOffer, twoEurOffer.Buying.String())
+	set.add(threeEurOffer, threeEurOffer.Buying.String())
+	set.add(quarterOffer, quarterOffer.Buying.String())
+	set.add(fiftyCentsOffer, fiftyCentsOffer.Buying.String())
 
 	if contains := set.remove(dollarOffer.OfferId, usdAsset.String()); !contains {
 		t.Fatal("expected set to contain dollar offer")

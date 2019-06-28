@@ -30,8 +30,7 @@ const (
 type edgeSet map[string][]xdr.OfferEntry
 
 // add will insert the given offer into the edge set
-func (e edgeSet) add(offer xdr.OfferEntry) {
-	buyingAsset := offer.Buying.String()
+func (e edgeSet) add(offer xdr.OfferEntry, buyingAsset string) {
 	// offers is sorted by cheapest to most expensive price to convert buyingAsset to sellingAsset
 	offers := e[buyingAsset]
 	if len(offers) == 0 {
@@ -100,6 +99,8 @@ type orderBookOperation struct {
 	operationType int
 	offerID       xdr.Int64
 	offer         *xdr.OfferEntry
+	buyingAsset   string
+	sellingAsset  string
 }
 
 type orderBookBatchedUpdates struct {
@@ -114,6 +115,8 @@ func (tx *orderBookBatchedUpdates) AddOffer(offer xdr.OfferEntry) BatchedUpdates
 		operationType: addOfferOperationType,
 		offerID:       offer.OfferId,
 		offer:         &offer,
+		buyingAsset:   offer.Buying.String(),
+		sellingAsset:  offer.Selling.String(),
 	})
 
 	return tx
@@ -141,7 +144,7 @@ func (tx *orderBookBatchedUpdates) Apply() error {
 	for _, operation := range tx.operations {
 		switch operation.operationType {
 		case addOfferOperationType:
-			if err := tx.orderbook.add(*operation.offer); err != nil {
+			if err := tx.orderbook.add(*operation.offer, operation.buyingAsset, operation.sellingAsset); err != nil {
 				return errors.Wrap(err, "could not apply update in batch")
 			}
 		case removeOfferOperationType:
@@ -193,10 +196,7 @@ func (graph *OrderBookGraph) Batch() BatchedUpdates {
 }
 
 // add inserts a given offer into the order book graph
-func (graph *OrderBookGraph) add(offer xdr.OfferEntry) error {
-	buyingAsset := offer.Buying.String()
-	sellingAsset := offer.Selling.String()
-
+func (graph *OrderBookGraph) add(offer xdr.OfferEntry, buyingAsset, sellingAsset string) error {
 	if _, contains := graph.tradingPairForOffer[offer.OfferId]; contains {
 		if err := graph.remove(offer.OfferId); err != nil {
 			return errors.Wrap(err, "could not update offer in order book graph")
@@ -209,9 +209,9 @@ func (graph *OrderBookGraph) add(offer xdr.OfferEntry) error {
 	}
 	if set, ok := graph.edgesForSellingAsset[sellingAsset]; !ok {
 		graph.edgesForSellingAsset[sellingAsset] = edgeSet{}
-		graph.edgesForSellingAsset[sellingAsset].add(offer)
+		graph.edgesForSellingAsset[sellingAsset].add(offer, buyingAsset)
 	} else {
-		set.add(offer)
+		set.add(offer, buyingAsset)
 	}
 
 	return nil
@@ -351,15 +351,14 @@ func (graph *OrderBookGraph) FindPaths(
 	sourceAssetBalances []xdr.Int64,
 	maxAssetsPerPath int,
 ) ([]Path, error) {
-	graph.lock.RLock()
-	defer graph.lock.RUnlock()
-
 	destinationAssetString := destinationAsset.String()
 	sourceAssetsMap := map[string]xdr.Int64{}
 	for i, sourceAsset := range sourceAssets {
 		sourceAssetString := sourceAsset.String()
 		sourceAssetsMap[sourceAssetString] = sourceAssetBalances[i]
 	}
+
+	graph.lock.RLock()
 	allPaths, err := graph.findPaths(
 		maxPathLength,
 		map[string]bool{},
@@ -371,6 +370,7 @@ func (graph *OrderBookGraph) FindPaths(
 		sourceAssetsMap,
 		[]Path{},
 	)
+	graph.lock.RUnlock()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not determine paths")
 	}
