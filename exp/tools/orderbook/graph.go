@@ -239,8 +239,11 @@ func (graph *OrderBookGraph) remove(offerID xdr.Int64) error {
 
 // Path represents a payment path from a source asset to some destination asset
 type Path struct {
-	SourceAmount      xdr.Int64
-	SourceAsset       xdr.Asset
+	SourceAmount xdr.Int64
+	SourceAsset  xdr.Asset
+	// sourceAssetString is included as an optimization to improve the performance
+	// of sorting paths by avoiding serializing assets to strings repeatedly
+	sourceAssetString string
 	InteriorNodes     []xdr.Asset
 	DestinationAsset  xdr.Asset
 	DestinationAmount xdr.Int64
@@ -293,9 +296,10 @@ func (graph *OrderBookGraph) findPaths(
 		}
 
 		paths = append(paths, Path{
-			SourceAmount:  currentAssetAmount,
-			SourceAsset:   currentAsset,
-			InteriorNodes: interiorNodes,
+			sourceAssetString: currentAssetString,
+			SourceAmount:      currentAssetAmount,
+			SourceAsset:       currentAsset,
+			InteriorNodes:     interiorNodes,
 		})
 	}
 
@@ -371,8 +375,9 @@ func (graph *OrderBookGraph) FindPaths(
 		return nil, errors.Wrap(err, "could not determine paths")
 	}
 
-	return includeDestinationInPaths(
-		sortAndFilterPaths(allPaths, maxAssetsPerPath),
+	return sortAndFilterPaths(
+		allPaths,
+		maxAssetsPerPath,
 		destinationAsset,
 		destinationAmount,
 	), nil
@@ -424,10 +429,13 @@ func consumeOffers(
 
 // sortAndFilterPaths sorts the given list of paths by
 // source asset, source asset amount, and path length
-// also, we limit the number of paths with the same source asset to maxPathsPerAsset
+// also, we limit the number of paths with the same source asset to maxPathsPerAsset and
+// we make sure the destination asset and destination amount is included in all paths
 func sortAndFilterPaths(
 	allPaths []Path,
 	maxPathsPerAsset int,
+	destinationAsset xdr.Asset,
+	destinationAmount xdr.Int64,
 ) []Path {
 	sort.Slice(allPaths, func(i, j int) bool {
 		if allPaths[i].SourceAsset.Equals(allPaths[j].SourceAsset) {
@@ -436,7 +444,7 @@ func sortAndFilterPaths(
 			}
 			return allPaths[i].SourceAmount < allPaths[j].SourceAmount
 		}
-		return allPaths[i].SourceAsset.String() < allPaths[j].SourceAsset.String()
+		return allPaths[i].sourceAssetString < allPaths[j].sourceAssetString
 	})
 
 	filtered := []Path{}
@@ -444,24 +452,16 @@ func sortAndFilterPaths(
 	for _, entry := range allPaths {
 		if len(filtered) == 0 || !filtered[len(filtered)-1].SourceAsset.Equals(entry.SourceAsset) {
 			countForAsset = 1
+			entry.DestinationAsset = destinationAsset
+			entry.DestinationAmount = destinationAmount
 			filtered = append(filtered, entry)
 		} else if countForAsset < maxPathsPerAsset {
 			countForAsset++
+			entry.DestinationAsset = destinationAsset
+			entry.DestinationAmount = destinationAmount
 			filtered = append(filtered, entry)
 		}
 	}
 
 	return filtered
-}
-
-func includeDestinationInPaths(
-	paths []Path,
-	destinationAsset xdr.Asset,
-	destinationAmount xdr.Int64,
-) []Path {
-	for i := 0; i < len(paths); i++ {
-		paths[i].DestinationAsset = destinationAsset
-		paths[i].DestinationAmount = destinationAmount
-	}
-	return paths
 }

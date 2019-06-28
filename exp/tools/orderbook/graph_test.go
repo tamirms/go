@@ -866,47 +866,57 @@ func TestConsumeOffers(t *testing.T) {
 func TestSortAndFilterPaths(t *testing.T) {
 	allPaths := []Path{
 		Path{
-			SourceAmount:  3,
-			SourceAsset:   eurAsset,
-			InteriorNodes: []xdr.Asset{},
+			SourceAmount:      3,
+			SourceAsset:       eurAsset,
+			sourceAssetString: eurAsset.String(),
+			InteriorNodes:     []xdr.Asset{},
 		},
 		Path{
-			SourceAmount:  4,
-			SourceAsset:   eurAsset,
-			InteriorNodes: []xdr.Asset{},
+			SourceAmount:      4,
+			SourceAsset:       eurAsset,
+			sourceAssetString: eurAsset.String(),
+			InteriorNodes:     []xdr.Asset{},
 		},
 		Path{
-			SourceAmount:  1,
-			SourceAsset:   usdAsset,
-			InteriorNodes: []xdr.Asset{},
+			SourceAmount:      1,
+			SourceAsset:       usdAsset,
+			sourceAssetString: usdAsset.String(),
+			InteriorNodes:     []xdr.Asset{},
 		},
 		Path{
-			SourceAmount:  2,
-			SourceAsset:   eurAsset,
-			InteriorNodes: []xdr.Asset{},
+			SourceAmount:      2,
+			SourceAsset:       eurAsset,
+			sourceAssetString: eurAsset.String(),
+			InteriorNodes:     []xdr.Asset{},
 		},
 		Path{
-			SourceAmount: 2,
-			SourceAsset:  eurAsset,
+			SourceAmount:      2,
+			SourceAsset:       eurAsset,
+			sourceAssetString: eurAsset.String(),
 			InteriorNodes: []xdr.Asset{
 				nativeAsset,
 			},
 		},
 		Path{
-			SourceAmount:  10,
-			SourceAsset:   nativeAsset,
-			InteriorNodes: []xdr.Asset{},
+			SourceAmount:      10,
+			SourceAsset:       nativeAsset,
+			sourceAssetString: nativeAsset.String(),
+			InteriorNodes:     []xdr.Asset{},
 		},
 	}
 	sortedAndFiltered := sortAndFilterPaths(
 		allPaths,
 		3,
+		yenAsset,
+		1000,
 	)
 	expectedPaths := []Path{
 		Path{
-			SourceAmount:  2,
-			SourceAsset:   eurAsset,
-			InteriorNodes: []xdr.Asset{},
+			SourceAmount:      2,
+			SourceAsset:       eurAsset,
+			InteriorNodes:     []xdr.Asset{},
+			DestinationAsset:  yenAsset,
+			DestinationAmount: 1000,
 		},
 		Path{
 			SourceAmount: 2,
@@ -914,21 +924,29 @@ func TestSortAndFilterPaths(t *testing.T) {
 			InteriorNodes: []xdr.Asset{
 				nativeAsset,
 			},
+			DestinationAsset:  yenAsset,
+			DestinationAmount: 1000,
 		},
 		Path{
-			SourceAmount:  3,
-			SourceAsset:   eurAsset,
-			InteriorNodes: []xdr.Asset{},
+			SourceAmount:      3,
+			SourceAsset:       eurAsset,
+			InteriorNodes:     []xdr.Asset{},
+			DestinationAsset:  yenAsset,
+			DestinationAmount: 1000,
 		},
 		Path{
-			SourceAmount:  1,
-			SourceAsset:   usdAsset,
-			InteriorNodes: []xdr.Asset{},
+			SourceAmount:      1,
+			SourceAsset:       usdAsset,
+			InteriorNodes:     []xdr.Asset{},
+			DestinationAsset:  yenAsset,
+			DestinationAmount: 1000,
 		},
 		Path{
-			SourceAmount:  10,
-			SourceAsset:   nativeAsset,
-			InteriorNodes: []xdr.Asset{},
+			SourceAmount:      10,
+			SourceAsset:       nativeAsset,
+			InteriorNodes:     []xdr.Asset{},
+			DestinationAsset:  yenAsset,
+			DestinationAmount: 1000,
 		},
 	}
 
