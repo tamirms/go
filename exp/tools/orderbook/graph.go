@@ -1,10 +1,10 @@
 package main
 
 import (
-	"math/big"
 	"sort"
 	"sync"
 
+	"github.com/stellar/go/price"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/xdr"
 )
@@ -16,146 +16,6 @@ var (
 	errOfferPriceDenominatorIsZero = errors.New("denominator of offer price is 0")
 	errBatchAlreadyApplied         = errors.New("cannot apply batched updates more than once")
 )
-
-const (
-	_                        = iota
-	addOfferOperationType    = iota
-	removeOfferOperationType = iota
-)
-
-// edgeSet maps an asset to all offers which buy that asset
-// note that each key in the map is obtained by calling offer.Buying.String()
-// also, the offers are sorted by price (in terms of the buying asset)
-// from cheapest to expensive
-type edgeSet map[string][]xdr.OfferEntry
-
-// add will insert the given offer into the edge set
-func (e edgeSet) add(offer xdr.OfferEntry, buyingAsset string) {
-	// offers is sorted by cheapest to most expensive price to convert buyingAsset to sellingAsset
-	offers := e[buyingAsset]
-	if len(offers) == 0 {
-		e[buyingAsset] = []xdr.OfferEntry{offer}
-		return
-	}
-
-	// find the smallest i such that Price of offers[i] >  Price of offer
-	insertIndex := sort.Search(len(offers), func(i int) bool {
-		return big.NewRat(int64(offers[i].Price.N), int64(offers[i].Price.D)).
-			Cmp(big.NewRat(int64(offer.Price.N), int64(offer.Price.D))) > 0
-	})
-
-	offers = append(offers, offer)
-	last := len(offers) - 1
-	for insertIndex < last {
-		offers[insertIndex], offers[last] = offers[last], offers[insertIndex]
-		insertIndex++
-	}
-	e[buyingAsset] = offers
-}
-
-// remove will delete the given offer from the edge set
-// buyingAsset is obtained by calling offer.Buying.String()
-func (e edgeSet) remove(offerID xdr.Int64, buyingAsset string) bool {
-	edges := e[buyingAsset]
-	if len(edges) == 0 {
-		return false
-	}
-	contains := false
-
-	for i := 0; i < len(edges); i++ {
-		if edges[i].OfferId == offerID {
-			contains = true
-			for j := i + 1; j < len(edges); j++ {
-				edges[i] = edges[j]
-				i++
-			}
-			edges = edges[0 : len(edges)-1]
-			break
-		}
-	}
-	if contains {
-		if len(edges) == 0 {
-			delete(e, buyingAsset)
-		} else {
-			e[buyingAsset] = edges
-		}
-	}
-
-	return contains
-}
-
-// BatchedUpdates is an interface for applying multiple
-// operations on an order book
-type BatchedUpdates interface {
-	// AddOffer will queue an operation to add the given offer to the order book
-	AddOffer(offer xdr.OfferEntry) BatchedUpdates
-	// AddOffer will queue an operation to remove the given offer from the order book
-	RemoveOffer(offerID xdr.Int64) BatchedUpdates
-	// Apply will attempt to apply all the updates in the batch to the order book
-	Apply() error
-}
-
-type orderBookOperation struct {
-	operationType int
-	offerID       xdr.Int64
-	offer         *xdr.OfferEntry
-	buyingAsset   string
-	sellingAsset  string
-}
-
-type orderBookBatchedUpdates struct {
-	operations []orderBookOperation
-	orderbook  *OrderBookGraph
-	committed  bool
-}
-
-// AddOffer will queue an operation to add the given offer to the order book
-func (tx *orderBookBatchedUpdates) AddOffer(offer xdr.OfferEntry) BatchedUpdates {
-	tx.operations = append(tx.operations, orderBookOperation{
-		operationType: addOfferOperationType,
-		offerID:       offer.OfferId,
-		offer:         &offer,
-		buyingAsset:   offer.Buying.String(),
-		sellingAsset:  offer.Selling.String(),
-	})
-
-	return tx
-}
-
-// AddOffer will queue an operation to remove the given offer from the order book
-func (tx *orderBookBatchedUpdates) RemoveOffer(offerID xdr.Int64) BatchedUpdates {
-	tx.operations = append(tx.operations, orderBookOperation{
-		operationType: removeOfferOperationType,
-		offerID:       offerID,
-	})
-
-	return tx
-}
-
-// Apply will attempt to apply all the updates in the batch to the order book
-func (tx *orderBookBatchedUpdates) Apply() error {
-	tx.orderbook.lock.Lock()
-	defer tx.orderbook.lock.Unlock()
-	if tx.committed {
-		return errBatchAlreadyApplied
-	}
-	tx.committed = true
-
-	for _, operation := range tx.operations {
-		switch operation.operationType {
-		case addOfferOperationType:
-			if err := tx.orderbook.add(*operation.offer, operation.buyingAsset, operation.sellingAsset); err != nil {
-				return errors.Wrap(err, "could not apply update in batch")
-			}
-		case removeOfferOperationType:
-			if err := tx.orderbook.remove(operation.offerID); err != nil {
-				return errors.Wrap(err, "could not apply update in batch")
-			}
-		}
-	}
-
-	return nil
-}
 
 // trading pair represents two assets that can be exchanged if an order is fulfilled
 type tradingPair struct {
@@ -196,22 +56,23 @@ func (graph *OrderBookGraph) Batch() BatchedUpdates {
 }
 
 // add inserts a given offer into the order book graph
-func (graph *OrderBookGraph) add(offer xdr.OfferEntry, buyingAsset, sellingAsset string) error {
+func (graph *OrderBookGraph) add(offer xdr.OfferEntry) error {
 	if _, contains := graph.tradingPairForOffer[offer.OfferId]; contains {
 		if err := graph.remove(offer.OfferId); err != nil {
 			return errors.Wrap(err, "could not update offer in order book graph")
 		}
 	}
 
+	sellingAsset := offer.Selling.String()
 	graph.tradingPairForOffer[offer.OfferId] = tradingPair{
-		buyingAsset:  buyingAsset,
+		buyingAsset:  offer.Buying.String(),
 		sellingAsset: sellingAsset,
 	}
 	if set, ok := graph.edgesForSellingAsset[sellingAsset]; !ok {
 		graph.edgesForSellingAsset[sellingAsset] = edgeSet{}
-		graph.edgesForSellingAsset[sellingAsset].add(offer, buyingAsset)
+		graph.edgesForSellingAsset[sellingAsset].add(offer)
 	} else {
-		set.add(offer, buyingAsset)
+		set.add(offer)
 	}
 
 	return nil
@@ -412,13 +273,19 @@ func consumeOffers(
 		if offer.Price.D == 0 {
 			return -1, errOfferPriceDenominatorIsZero
 		}
-		if offer.Amount >= currentAssetAmount {
-			totalConsumed += divideCeil(currentAssetAmount*xdr.Int64(offer.Price.N), xdr.Int64(offer.Price.D))
-			currentAssetAmount = 0
-			break
+
+		buyingUnitsFromOffer, sellingUnitsFromOffer, err := price.ConvertToBuyingUnits(
+			int64(offer.Amount),
+			int64(currentAssetAmount),
+			int64(offer.Price.N),
+			int64(offer.Price.D),
+		)
+		if err != nil {
+			return -1, errors.Wrap(err, "could not determine buying units")
 		}
-		totalConsumed += divideCeil(offer.Amount*xdr.Int64(offer.Price.N), xdr.Int64(offer.Price.D))
-		currentAssetAmount -= offer.Amount
+
+		totalConsumed += xdr.Int64(buyingUnitsFromOffer)
+		currentAssetAmount -= xdr.Int64(sellingUnitsFromOffer)
 	}
 
 	if currentAssetAmount <= 0 {

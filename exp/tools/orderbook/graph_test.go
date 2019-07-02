@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding"
-	"strings"
 	"testing"
 
 	"github.com/stellar/go/keypair"
@@ -230,12 +229,12 @@ func assertPathEquals(t *testing.T, a, b []Path) {
 func TestAddEdgeSet(t *testing.T) {
 	set := edgeSet{}
 
-	set.add(dollarOffer, dollarOffer.Buying.String())
-	set.add(eurOffer, eurOffer.Buying.String())
-	set.add(twoEurOffer, twoEurOffer.Buying.String())
-	set.add(threeEurOffer, threeEurOffer.Buying.String())
-	set.add(quarterOffer, quarterOffer.Buying.String())
-	set.add(fiftyCentsOffer, fiftyCentsOffer.Buying.String())
+	set.add(dollarOffer)
+	set.add(eurOffer)
+	set.add(twoEurOffer)
+	set.add(threeEurOffer)
+	set.add(quarterOffer)
+	set.add(fiftyCentsOffer)
 
 	if len(set) != 2 {
 		t.Fatalf("expected set to have 2 entries but got %v", set)
@@ -261,12 +260,12 @@ func TestRemoveEdgeSet(t *testing.T) {
 		t.Fatal("expected set to not contain asset")
 	}
 
-	set.add(dollarOffer, dollarOffer.Buying.String())
-	set.add(eurOffer, eurOffer.Buying.String())
-	set.add(twoEurOffer, twoEurOffer.Buying.String())
-	set.add(threeEurOffer, threeEurOffer.Buying.String())
-	set.add(quarterOffer, quarterOffer.Buying.String())
-	set.add(fiftyCentsOffer, fiftyCentsOffer.Buying.String())
+	set.add(dollarOffer)
+	set.add(eurOffer)
+	set.add(twoEurOffer)
+	set.add(threeEurOffer)
+	set.add(quarterOffer)
+	set.add(fiftyCentsOffer)
 
 	if contains := set.remove(dollarOffer.OfferId, usdAsset.String()); !contains {
 		t.Fatal("expected set to contain dollar offer")
@@ -314,20 +313,6 @@ func TestApplyTwice(t *testing.T) {
 		Apply()
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
-	}
-
-	err = batch.Apply()
-	if err != errBatchAlreadyApplied {
-		t.Fatalf("expected error %v but got %v", errBatchAlreadyApplied, err)
-	}
-
-	batch = graph.Batch()
-	err = batch.
-		AddOffer(dollarOffer).
-		RemoveOffer(123456).
-		Apply()
-	if err == nil || !strings.Contains(err.Error(), errOfferNotPresent.Error()) {
-		t.Fatalf("expected error %v but got %v", errOfferNotPresent, err)
 	}
 
 	err = batch.Apply()
@@ -680,20 +665,6 @@ func TestRemoveOfferOrderBook(t *testing.T) {
 		Apply()
 	if err != nil {
 		t.Fatalf("unexpected error %v", err)
-	}
-
-	err = graph.Batch().
-		RemoveOffer(dollarOffer.OfferId).
-		Apply()
-	if err == nil || !strings.Contains(err.Error(), errOfferNotPresent.Error()) {
-		t.Fatalf("expected error %v but got %v", errOfferNotPresent, err)
-	}
-
-	err = graph.Batch().
-		RemoveOffer(123456).
-		Apply()
-	if err == nil || !strings.Contains(err.Error(), errOfferNotPresent.Error()) {
-		t.Fatalf("expected error %v but got %v", errOfferNotPresent, err)
 	}
 
 	expectedGraph := &OrderBookGraph{
