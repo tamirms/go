@@ -841,24 +841,32 @@ func TestSortAndFilterPaths(t *testing.T) {
 			SourceAsset:       eurAsset,
 			sourceAssetString: eurAsset.String(),
 			InteriorNodes:     []xdr.Asset{},
+			DestinationAsset:  yenAsset,
+			DestinationAmount: 1000,
 		},
 		Path{
 			SourceAmount:      4,
 			SourceAsset:       eurAsset,
 			sourceAssetString: eurAsset.String(),
 			InteriorNodes:     []xdr.Asset{},
+			DestinationAsset:  yenAsset,
+			DestinationAmount: 1000,
 		},
 		Path{
 			SourceAmount:      1,
 			SourceAsset:       usdAsset,
 			sourceAssetString: usdAsset.String(),
 			InteriorNodes:     []xdr.Asset{},
+			DestinationAsset:  yenAsset,
+			DestinationAmount: 1000,
 		},
 		Path{
 			SourceAmount:      2,
 			SourceAsset:       eurAsset,
 			sourceAssetString: eurAsset.String(),
 			InteriorNodes:     []xdr.Asset{},
+			DestinationAsset:  yenAsset,
+			DestinationAmount: 1000,
 		},
 		Path{
 			SourceAmount:      2,
@@ -867,19 +875,21 @@ func TestSortAndFilterPaths(t *testing.T) {
 			InteriorNodes: []xdr.Asset{
 				nativeAsset,
 			},
+			DestinationAsset:  yenAsset,
+			DestinationAmount: 1000,
 		},
 		Path{
 			SourceAmount:      10,
 			SourceAsset:       nativeAsset,
 			sourceAssetString: nativeAsset.String(),
 			InteriorNodes:     []xdr.Asset{},
+			DestinationAsset:  yenAsset,
+			DestinationAmount: 1000,
 		},
 	}
 	sortedAndFiltered := sortAndFilterPaths(
 		allPaths,
 		3,
-		yenAsset,
-		1000,
 	)
 	expectedPaths := []Path{
 		Path{

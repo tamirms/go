@@ -124,6 +124,8 @@ func (graph *OrderBookGraph) findPaths(
 	currentAssetString string,
 	currentAsset xdr.Asset,
 	currentAssetAmount xdr.Int64,
+	destinationAsset xdr.Asset,
+	destinationAssetAmount xdr.Int64,
 	ignoreOffersFrom xdr.AccountId,
 	targetAssets map[string]xdr.Int64,
 	paths []Path,
@@ -162,6 +164,8 @@ func (graph *OrderBookGraph) findPaths(
 			SourceAmount:      currentAssetAmount,
 			SourceAsset:       currentAsset,
 			InteriorNodes:     interiorNodes,
+			DestinationAsset:  destinationAsset,
+			DestinationAmount: destinationAssetAmount,
 		})
 	}
 
@@ -190,6 +194,8 @@ func (graph *OrderBookGraph) findPaths(
 			nextAssetString,
 			nextAsset,
 			nextAssetAmount,
+			destinationAsset,
+			destinationAssetAmount,
 			ignoreOffersFrom,
 			targetAssets,
 			paths,
@@ -228,6 +234,8 @@ func (graph *OrderBookGraph) FindPaths(
 		destinationAssetString,
 		destinationAsset,
 		destinationAmount,
+		destinationAsset,
+		destinationAmount,
 		sourceAccountID,
 		sourceAssetsMap,
 		[]Path{},
@@ -240,8 +248,6 @@ func (graph *OrderBookGraph) FindPaths(
 	return sortAndFilterPaths(
 		allPaths,
 		maxAssetsPerPath,
-		destinationAsset,
-		destinationAmount,
 	), nil
 }
 
@@ -290,13 +296,10 @@ func consumeOffers(
 
 // sortAndFilterPaths sorts the given list of paths by
 // source asset, source asset amount, and path length
-// also, we limit the number of paths with the same source asset to maxPathsPerAsset and
-// we make sure the destination asset and destination amount is included in all paths
+// also, we limit the number of paths with the same source asset to maxPathsPerAsset
 func sortAndFilterPaths(
 	allPaths []Path,
 	maxPathsPerAsset int,
-	destinationAsset xdr.Asset,
-	destinationAmount xdr.Int64,
 ) []Path {
 	sort.Slice(allPaths, func(i, j int) bool {
 		if allPaths[i].SourceAsset.Equals(allPaths[j].SourceAsset) {
@@ -313,13 +316,9 @@ func sortAndFilterPaths(
 	for _, entry := range allPaths {
 		if len(filtered) == 0 || !filtered[len(filtered)-1].SourceAsset.Equals(entry.SourceAsset) {
 			countForAsset = 1
-			entry.DestinationAsset = destinationAsset
-			entry.DestinationAmount = destinationAmount
 			filtered = append(filtered, entry)
 		} else if countForAsset < maxPathsPerAsset {
 			countForAsset++
-			entry.DestinationAsset = destinationAsset
-			entry.DestinationAmount = destinationAmount
 			filtered = append(filtered, entry)
 		}
 	}
