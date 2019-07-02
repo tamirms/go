@@ -1,3 +1,5 @@
+//lint:file-ignore U1000 this package is currently unused but it will be used in a future PR
+
 package main
 
 import (

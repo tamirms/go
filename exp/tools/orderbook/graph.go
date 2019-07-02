@@ -1,3 +1,4 @@
+//lint:file-ignore U1000 this package is currently unused but it will be used in a future PR
 package main
 
 import (
@@ -242,13 +243,6 @@ func (graph *OrderBookGraph) FindPaths(
 		destinationAsset,
 		destinationAmount,
 	), nil
-}
-
-func divideCeil(numerator, denominator xdr.Int64) xdr.Int64 {
-	if numerator%denominator == 0 {
-		return numerator / denominator
-	}
-	return (numerator / denominator) + 1
 }
 
 func consumeOffers(
