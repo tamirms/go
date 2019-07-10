@@ -23,20 +23,20 @@ func TestPopulateOperation_Successful(t *testing.T) {
 	dest = operations.Base{}
 	row = history.Operation{TransactionSuccessful: nil}
 
-	PopulateBaseOperation(ctx, &dest, row, ledger)
+	PopulateBaseOperation(ctx, &dest, row, nil, ledger)
 	assert.True(t, dest.TransactionSuccessful)
 
 	dest = operations.Base{}
 	val = true
 	row = history.Operation{TransactionSuccessful: &val}
 
-	PopulateBaseOperation(ctx, &dest, row, ledger)
+	PopulateBaseOperation(ctx, &dest, row, nil, ledger)
 	assert.True(t, dest.TransactionSuccessful)
 
 	dest = operations.Base{}
 	val = false
 	row = history.Operation{TransactionSuccessful: &val}
 
-	PopulateBaseOperation(ctx, &dest, row, ledger)
+	PopulateBaseOperation(ctx, &dest, row, nil, ledger)
 	assert.False(t, dest.TransactionSuccessful)
 }

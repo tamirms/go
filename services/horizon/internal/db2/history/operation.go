@@ -5,6 +5,7 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/go-errors/errors"
+	"github.com/jmoiron/sqlx"
 	"github.com/stellar/go/services/horizon/internal/db2"
 	"github.com/stellar/go/services/horizon/internal/toid"
 	"github.com/stellar/go/xdr"
@@ -64,22 +65,54 @@ func (q *Q) OperationFeeStats(currentSeq int32, dest *FeeStats) error {
 
 // Operations provides a helper to filter the operations table with pre-defined
 // filters.  See `OperationsQ` for the available filters.
-func (q *Q) Operations() *OperationsQ {
-	return &OperationsQ{
-		parent:        q,
-		sql:           selectOperation,
-		opIdCol:       "hop.id",
-		includeFailed: false,
+func (q *Q) Operations(includeTransactions bool) *OperationsQ {
+	query := &OperationsQ{
+		parent:              q,
+		opIdCol:             "hop.id",
+		includeFailed:       false,
+		includeTransactions: includeTransactions,
 	}
+
+	if includeTransactions {
+		query.sql = selectOperationAndTransactions
+	} else {
+		query.sql = selectOperation
+	}
+
+	return query
 }
 
 // OperationByID loads a single operation with `id` into `dest`
-func (q *Q) OperationByID(dest interface{}, id int64) error {
-	sql := selectOperation.
+func (q *Q) OperationByID(includeTransactions bool, id int64) (Operation, *Transaction, error) {
+	sql := selectOperation
+	if includeTransactions {
+		sql = selectOperationAndTransactions
+	}
+
+	sql = sql.
 		Limit(1).
 		Where("hop.id = ?", id)
 
-	return q.Get(dest, sql)
+	if includeTransactions {
+		rows, err := q.Query(sql)
+		if err != nil {
+			return Operation{}, nil, err
+		}
+		defer rows.Close()
+		operations, transactions, err := parseOperationAndTransactionRecords(rows)
+		if err != nil {
+			return Operation{}, nil, err
+		}
+		if len(operations) != len(transactions) || len(operations) != 1 {
+			return Operation{}, nil, errors.New("unexpected number of operations and transactions")
+		}
+
+		return operations[0], &transactions[0], nil
+	} else {
+		var operation Operation
+		err := q.Get(&operation, sql)
+		return operation, nil, err
+	}
 }
 
 // ForAccount filters the operations collection to a specific account
@@ -171,10 +204,61 @@ func (q *OperationsQ) Page(page db2.PageQuery) *OperationsQ {
 	return q
 }
 
-// Select loads the results of the query specified by `q` into `dest`.
-func (q *OperationsQ) Select(dest interface{}) error {
+func parseOperationAndTransactionRecords(rows *sqlx.Rows) ([]Operation, []Transaction, error) {
+	var operations []Operation
+	var transactions []Transaction
+
+	for rows.Next() {
+		var operation Operation
+		var transaction Transaction
+		err := rows.Scan(
+			&operation.ID,
+			&operation.TransactionID,
+			&operation.ApplicationOrder,
+			&operation.Type,
+			&operation.DetailsString,
+			&operation.SourceAccount,
+			&operation.TransactionHash,
+			&operation.TxResult,
+			&operation.TransactionSuccessful,
+			&transaction.LedgerSequence,
+			&transaction.ApplicationOrder,
+			&transaction.Account,
+			&transaction.AccountSequence,
+			&transaction.MaxFee,
+			&transaction.FeeCharged,
+			&transaction.OperationCount,
+			&transaction.TxEnvelope,
+			&transaction.TxMeta,
+			&transaction.TxFeeMeta,
+			&transaction.CreatedAt,
+			&transaction.UpdatedAt,
+			&transaction.SignatureString,
+			&transaction.MemoType,
+			&transaction.Memo,
+			&transaction.ValidAfter,
+			&transaction.ValidBefore,
+			&transaction.LedgerCloseTime,
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+		transaction.TxResult = operation.TxResult
+		transaction.Successful = operation.TransactionSuccessful
+		transaction.ID = operation.TransactionID
+		transaction.TransactionHash = operation.TransactionHash
+
+		operations = append(operations, operation)
+		transactions = append(transactions, transaction)
+	}
+
+	return operations, transactions, nil
+}
+
+// Fetch returns results of the query specified by `q`
+func (q *OperationsQ) Fetch() ([]Operation, []Transaction, error) {
 	if q.Err != nil {
-		return q.Err
+		return nil, nil, q.Err
 	}
 
 	if !q.includeFailed {
@@ -182,44 +266,55 @@ func (q *OperationsQ) Select(dest interface{}) error {
 			Where("(ht.successful = true OR ht.successful IS NULL)")
 	}
 
-	q.Err = q.parent.Select(dest, q.sql)
-	if q.Err != nil {
-		return q.Err
+	var operations []Operation
+	var transactions []Transaction
+
+	if q.includeTransactions {
+		var rows *sqlx.Rows
+		rows, q.Err = q.parent.Query(q.sql)
+		if q.Err != nil {
+			return nil, nil, q.Err
+		}
+		defer rows.Close()
+		operations, transactions, q.Err = parseOperationAndTransactionRecords(rows)
+		if q.Err != nil {
+			return nil, nil, q.Err
+		}
+	} else {
+		q.Err = q.parent.Select(&operations, q.sql)
+		if q.Err != nil {
+			return nil, nil, q.Err
+		}
 	}
 
-	operations, ok := dest.(*[]Operation)
-	if !ok {
-		return errors.New("dest is not *[]Operation")
-	}
-
-	for _, o := range *operations {
+	for _, o := range operations {
 		var resultXDR xdr.TransactionResult
 		err := xdr.SafeUnmarshalBase64(o.TxResult, &resultXDR)
 		if err != nil {
-			return err
+			return nil, nil, err
 		}
 
 		if !q.includeFailed {
 			if !o.IsTransactionSuccessful() {
-				return errors.Errorf("Corrupted data! `include_failed=false` but returned transaction is failed: %s", o.TransactionHash)
+				return nil, nil, errors.Errorf("Corrupted data! `include_failed=false` but returned transaction is failed: %s", o.TransactionHash)
 			}
 
 			if resultXDR.Result.Code != xdr.TransactionResultCodeTxSuccess {
-				return errors.Errorf("Corrupted data! `include_failed=false` but returned transaction is failed: %s %s", o.TransactionHash, o.TxResult)
+				return nil, nil, errors.Errorf("Corrupted data! `include_failed=false` but returned transaction is failed: %s %s", o.TransactionHash, o.TxResult)
 			}
 		}
 
 		// Check if `successful` equals resultXDR
 		if o.IsTransactionSuccessful() && resultXDR.Result.Code != xdr.TransactionResultCodeTxSuccess {
-			return errors.Errorf("Corrupted data! `successful=true` but returned transaction is not success: %s %s", o.TransactionHash, o.TxResult)
+			return nil, nil, errors.Errorf("Corrupted data! `successful=true` but returned transaction is not success: %s %s", o.TransactionHash, o.TxResult)
 		}
 
 		if !o.IsTransactionSuccessful() && resultXDR.Result.Code == xdr.TransactionResultCodeTxSuccess {
-			return errors.Errorf("Corrupted data! `successful=false` but returned transaction is success: %s %s", o.TransactionHash, o.TxResult)
+			return nil, nil, errors.Errorf("Corrupted data! `successful=false` but returned transaction is success: %s %s", o.TransactionHash, o.TxResult)
 		}
 	}
 
-	return nil
+	return operations, transactions, nil
 }
 
 var selectOperation = sq.Select(
@@ -234,3 +329,37 @@ var selectOperation = sq.Select(
 		"ht.successful as transaction_successful").
 	From("history_operations hop").
 	LeftJoin("history_transactions ht ON ht.id = hop.transaction_id")
+
+var selectOperationAndTransactions = sq.Select(
+	"hop.id, " +
+		"hop.transaction_id, " +
+		"hop.application_order, " +
+		"hop.type, " +
+		"hop.details, " +
+		"hop.source_account, " +
+		"ht.transaction_hash, " +
+		"ht.tx_result, " +
+		"ht.successful as transaction_successful, " +
+		"ht.ledger_sequence, " +
+		"ht.application_order, " +
+		"ht.account, " +
+		"ht.account_sequence, " +
+		"ht.max_fee, " +
+		// `fee_charged` is NULL by default, DB needs to be reingested
+		// to populate the value. If value is not present display `max_fee`.
+		"COALESCE(ht.fee_charged, ht.max_fee) as fee_charged, " +
+		"ht.operation_count, " +
+		"ht.tx_envelope, " +
+		"ht.tx_meta, " +
+		"ht.tx_fee_meta, " +
+		"ht.created_at, " +
+		"ht.updated_at, " +
+		"array_to_string(ht.signatures, ',') AS signatures, " +
+		"ht.memo_type, " +
+		"ht.memo, " +
+		"lower(ht.time_bounds) AS valid_after, " +
+		"upper(ht.time_bounds) AS valid_before, " +
+		"hl.closed_at AS ledger_close_time").
+	From("history_operations hop").
+	LeftJoin("history_transactions ht ON ht.id = hop.transaction_id").
+	LeftJoin("history_ledgers hl ON ht.ledger_sequence = hl.sequence")

@@ -31,14 +31,16 @@ var _ actions.EventStreamer = (*OperationIndexAction)(nil)
 // transaction.
 type OperationIndexAction struct {
 	Action
-	LedgerFilter      int32
-	AccountFilter     string
-	TransactionFilter string
-	PagingParams      db2.PageQuery
-	Records           []history.Operation
-	Ledgers           *history.LedgerCache
-	Page              hal.Page
-	IncludeFailed     bool
+	LedgerFilter        int32
+	AccountFilter       string
+	TransactionFilter   string
+	PagingParams        db2.PageQuery
+	OperationRecords    []history.Operation
+	TransactionRecords  []history.Transaction
+	Ledgers             *history.LedgerCache
+	Page                hal.Page
+	IncludeFailed       bool
+	IncludeTransactions bool
 }
 
 // JSON is a method for actions.JSON
@@ -67,15 +69,21 @@ func (action *OperationIndexAction) SSE(stream *sse.Stream) error {
 		action.loadLedgers,
 		func() {
 			stream.SetLimit(int(action.PagingParams.Limit))
-			records := action.Records[stream.SentCount():]
-			for _, record := range records {
-				ledger, found := action.Ledgers.Records[record.LedgerSequence()]
+			operationRecords := action.OperationRecords[stream.SentCount():]
+			transactionRecords := action.TransactionRecords[stream.SentCount():]
+			for i, operationRecord := range operationRecords {
+				ledger, found := action.Ledgers.Records[operationRecord.LedgerSequence()]
 				if !found {
-					action.Err = errors.New(fmt.Sprintf("could not find ledger data for sequence %d", record.LedgerSequence()))
+					action.Err = errors.New(fmt.Sprintf("could not find ledger data for sequence %d", operationRecord.LedgerSequence()))
 					return
 				}
 
-				res, err := resourceadapter.NewOperation(action.R.Context(), record, ledger)
+				var transactionRecord *history.Transaction
+				if action.IncludeTransactions {
+					transactionRecord = &transactionRecords[i]
+				}
+
+				res, err := resourceadapter.NewOperation(action.R.Context(), operationRecord, transactionRecord, ledger)
 				if err != nil {
 					action.Err = err
 					return
@@ -99,6 +107,7 @@ func (action *OperationIndexAction) loadParams() {
 	action.TransactionFilter = action.GetStringFromURLParam("tx_id")
 	action.PagingParams = action.GetPageQuery()
 	action.IncludeFailed = action.GetBool("include_failed")
+	action.IncludeTransactions = action.GetBool("include_transactions")
 
 	filters, err := countNonEmpty(
 		action.AccountFilter,
@@ -132,7 +141,7 @@ func (action *OperationIndexAction) loadParams() {
 
 func (action *OperationIndexAction) loadRecords() {
 	q := action.HistoryQ()
-	ops := q.Operations()
+	ops := q.Operations(action.IncludeTransactions)
 
 	switch {
 	case action.AccountFilter != "":
@@ -150,12 +159,12 @@ func (action *OperationIndexAction) loadRecords() {
 		ops.IncludeFailed()
 	}
 
-	action.Err = ops.Page(action.PagingParams).Select(&action.Records)
+	action.OperationRecords, action.TransactionRecords, action.Err = ops.Page(action.PagingParams).Fetch()
 	if action.Err != nil {
 		return
 	}
 
-	for _, o := range action.Records {
+	for _, o := range action.OperationRecords {
 		if !action.IncludeFailed && action.TransactionFilter == "" {
 			if !o.IsTransactionSuccessful() {
 				action.Err = errors.Errorf("Corrupted data! `include_failed=false` but returned transaction in /operations is failed: %s", o.TransactionHash)
@@ -179,23 +188,28 @@ func (action *OperationIndexAction) loadRecords() {
 // loadLedgers populates the ledger cache for this action
 func (action *OperationIndexAction) loadLedgers() {
 	action.Ledgers = &history.LedgerCache{}
-	for _, op := range action.Records {
+	for _, op := range action.OperationRecords {
 		action.Ledgers.Queue(op.LedgerSequence())
 	}
 	action.Err = action.Ledgers.Load(action.HistoryQ())
 }
 
 func (action *OperationIndexAction) loadPage() {
-	for _, record := range action.Records {
-		ledger, found := action.Ledgers.Records[record.LedgerSequence()]
+	for i, operationRecord := range action.OperationRecords {
+		ledger, found := action.Ledgers.Records[operationRecord.LedgerSequence()]
 		if !found {
-			msg := fmt.Sprintf("could not find ledger data for sequence %d", record.LedgerSequence())
+			msg := fmt.Sprintf("could not find ledger data for sequence %d", operationRecord.LedgerSequence())
 			action.Err = errors.New(msg)
 			return
 		}
 
+		var transactionRecord *history.Transaction
+		if action.IncludeTransactions {
+			transactionRecord = &action.TransactionRecords[i]
+		}
+
 		var res hal.Pageable
-		res, action.Err = resourceadapter.NewOperation(action.R.Context(), record, ledger)
+		res, action.Err = resourceadapter.NewOperation(action.R.Context(), operationRecord, transactionRecord, ledger)
 		if action.Err != nil {
 			return
 		}
@@ -215,26 +229,36 @@ var _ actions.JSONer = (*OperationShowAction)(nil)
 // OperationShowAction renders a ledger found by its sequence number.
 type OperationShowAction struct {
 	Action
-	ID       int64
-	Record   history.Operation
-	Ledger   history.Ledger
-	Resource interface{}
+	ID                  int64
+	OperationRecord     history.Operation
+	TransactionRecord   *history.Transaction
+	Ledger              history.Ledger
+	IncludeTransactions bool
+	Resource            interface{}
 }
 
 func (action *OperationShowAction) loadParams() {
 	action.ID = action.GetInt64("id")
+	action.IncludeTransactions = action.GetBool("include_transactions")
 }
 
 func (action *OperationShowAction) loadRecord() {
-	action.Err = action.HistoryQ().OperationByID(&action.Record, action.ID)
+	action.OperationRecord, action.TransactionRecord, action.Err = action.HistoryQ().OperationByID(
+		action.IncludeTransactions, action.ID,
+	)
 }
 
 func (action *OperationShowAction) loadLedger() {
-	action.Err = action.HistoryQ().LedgerBySequence(&action.Ledger, action.Record.LedgerSequence())
+	action.Err = action.HistoryQ().LedgerBySequence(&action.Ledger, action.OperationRecord.LedgerSequence())
 }
 
 func (action *OperationShowAction) loadResource() {
-	action.Resource, action.Err = resourceadapter.NewOperation(action.R.Context(), action.Record, action.Ledger)
+	action.Resource, action.Err = resourceadapter.NewOperation(
+		action.R.Context(),
+		action.OperationRecord,
+		action.TransactionRecord,
+		action.Ledger,
+	)
 }
 
 // JSON is a method for actions.JSON

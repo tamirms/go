@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/stellar/go/protocols/horizon"
 	"github.com/stellar/go/protocols/horizon/base"
 	"github.com/stellar/go/support/render/hal"
 	"github.com/stellar/go/xdr"
@@ -46,12 +47,13 @@ type Base struct {
 	PT string `json:"paging_token"`
 	// TransactionSuccessful defines if this operation is part of
 	// successful transaction.
-	TransactionSuccessful bool      `json:"transaction_successful"`
-	SourceAccount         string    `json:"source_account"`
-	Type                  string    `json:"type"`
-	TypeI                 int32     `json:"type_i"`
-	LedgerCloseTime       time.Time `json:"created_at"`
-	TransactionHash       string    `json:"transaction_hash"`
+	TransactionSuccessful bool                 `json:"transaction_successful"`
+	SourceAccount         string               `json:"source_account"`
+	Type                  string               `json:"type"`
+	TypeI                 int32                `json:"type_i"`
+	LedgerCloseTime       time.Time            `json:"created_at"`
+	TransactionHash       string               `json:"transaction_hash"`
+	Transaction           *horizon.Transaction `json:"transaction,omitempty"`
 }
 
 // PagingToken implements hal.Pageable

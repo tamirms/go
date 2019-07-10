@@ -67,7 +67,7 @@ func (action *PaymentsIndexAction) SSE(stream *sse.Stream) error {
 					return
 				}
 
-				res, err := resourceadapter.NewOperation(action.R.Context(), record, ledger)
+				res, err := resourceadapter.NewOperation(action.R.Context(), record, nil, ledger)
 				if err != nil {
 					action.Err = err
 					return
@@ -124,7 +124,7 @@ func (action *PaymentsIndexAction) loadParams() {
 
 func (action *PaymentsIndexAction) loadRecords() {
 	q := action.HistoryQ()
-	ops := q.Operations().OnlyPayments()
+	ops := q.Operations(false).OnlyPayments()
 
 	switch {
 	case action.AccountFilter != "":
@@ -142,7 +142,7 @@ func (action *PaymentsIndexAction) loadRecords() {
 		ops.IncludeFailed()
 	}
 
-	action.Err = ops.Page(action.PagingParams).Select(&action.Records)
+	action.Records, _, action.Err = ops.Page(action.PagingParams).Fetch()
 	if action.Err != nil {
 		return
 	}
@@ -190,7 +190,7 @@ func (action *PaymentsIndexAction) loadPage() {
 			return
 		}
 
-		res, action.Err = resourceadapter.NewOperation(action.R.Context(), record, ledger)
+		res, action.Err = resourceadapter.NewOperation(action.R.Context(), record, nil, ledger)
 		if action.Err != nil {
 			return
 		}
