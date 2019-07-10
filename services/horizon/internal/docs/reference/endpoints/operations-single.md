@@ -24,6 +24,7 @@ GET /operations/{id}
 | name | notes | description | example |
 | ---- | ----- | ----------- | ------- |
 | `id` | required, number | An operation ID. | 2927608622747649 |
+| `?include_transactions` | optional, bool, default: `false` | Set to `true` to include the transaction which created the operation in the response. | `true` |
 
 ### curl Example Request
 
