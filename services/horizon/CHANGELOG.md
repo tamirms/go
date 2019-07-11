@@ -8,7 +8,7 @@ bumps.  A breaking change will get clearly notified in this log.
 
 ## Unreleased
 
-* Add `include_transactions` parameter to operations endpoints.
+* Add `join` parameter to operations endpoints.
 * Fixed `/fee_stats` to correctly calculate ledger capacity in protocol v11.
 
 ## v0.18.0

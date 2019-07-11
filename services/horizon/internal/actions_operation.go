@@ -2,6 +2,7 @@ package horizon
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/stellar/go/services/horizon/internal/actions"
 	"github.com/stellar/go/services/horizon/internal/db2"
@@ -25,6 +26,10 @@ import (
 // Interface verifications
 var _ actions.JSONer = (*OperationIndexAction)(nil)
 var _ actions.EventStreamer = (*OperationIndexAction)(nil)
+
+const (
+	joinTransactions = "transactions"
+)
 
 // OperationIndexAction renders a page of operations resources, identified by
 // a normal page query and optionally filtered by an account, ledger, or
@@ -100,6 +105,24 @@ func (action *OperationIndexAction) SSE(stream *sse.Stream) error {
 	return action.Err
 }
 
+func parseJoinField(action *actions.Base) (map[string]bool, error) {
+	join := action.GetString("join")
+	validJoins := map[string]bool{}
+	if join != "" {
+		for _, part := range strings.Split(join, ",") {
+			if part == joinTransactions {
+				validJoins[joinTransactions] = true
+			} else {
+				return nil, supportProblem.MakeInvalidFieldProblem(
+					"join",
+					fmt.Errorf("it is not possible to join '%s'", part),
+				)
+			}
+		}
+	}
+	return validJoins, nil
+}
+
 func (action *OperationIndexAction) loadParams() {
 	action.ValidateCursorAsDefault()
 	action.AccountFilter = action.GetAddress("account_id")
@@ -107,7 +130,12 @@ func (action *OperationIndexAction) loadParams() {
 	action.TransactionFilter = action.GetStringFromURLParam("tx_id")
 	action.PagingParams = action.GetPageQuery()
 	action.IncludeFailed = action.GetBool("include_failed")
-	action.IncludeTransactions = action.GetBool("include_transactions")
+	if parsed, err := parseJoinField(&action.Action.Base); err != nil {
+		action.Err = err
+		return
+	} else {
+		action.IncludeTransactions = parsed[joinTransactions]
+	}
 
 	filters, err := countNonEmpty(
 		action.AccountFilter,
@@ -239,7 +267,12 @@ type OperationShowAction struct {
 
 func (action *OperationShowAction) loadParams() {
 	action.ID = action.GetInt64("id")
-	action.IncludeTransactions = action.GetBool("include_transactions")
+	if parsed, err := parseJoinField(&action.Action.Base); err != nil {
+		action.Err = err
+		return
+	} else {
+		action.IncludeTransactions = parsed[joinTransactions]
+	}
 }
 
 func (action *OperationShowAction) loadRecord() {

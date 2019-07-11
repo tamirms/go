@@ -190,7 +190,7 @@ func TestOperationActions_IncludeTransactions(t *testing.T) {
 	withoutTransactions := []operations.Base{}
 	ht.UnmarshalPage(w.Body, &withoutTransactions)
 
-	w = ht.Get("/operations?account_id=GA5WBPYA5Y4WAEHXWR2UKO2UO4BUGHUQ74EUPKON2QHV4WRHOIRNKKH2&include_transactions=true")
+	w = ht.Get("/operations?account_id=GA5WBPYA5Y4WAEHXWR2UKO2UO4BUGHUQ74EUPKON2QHV4WRHOIRNKKH2&join=transactions")
 	ht.Assert.Equal(200, w.Code)
 	withTransactions := []operations.Base{}
 	ht.UnmarshalPage(w.Body, &withTransactions)
@@ -299,7 +299,7 @@ func TestOperation_IncludeTransaction(t *testing.T) {
 	ht.Require.NoError(err, "failed to parse body")
 	ht.Assert.Nil(responseWithoutTransaction.Transaction)
 
-	withTransaction := ht.Get("/operations/261993009153?include_transactions=true")
+	withTransaction := ht.Get("/operations/261993009153?join=transactions")
 	ht.Assert.Equal(200, withTransaction.Code)
 	var responseWithTransaction operations.BumpSequence
 	err = json.Unmarshal(withTransaction.Body.Bytes(), &responseWithTransaction)

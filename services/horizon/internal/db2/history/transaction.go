@@ -1,6 +1,8 @@
 package history
 
 import (
+	"fmt"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/stellar/go/services/horizon/internal/db2"
 	"github.com/stellar/go/services/horizon/internal/toid"
@@ -24,6 +26,36 @@ func (q *Q) TransactionByHash(dest interface{}, hash string) error {
 		Where("ht.transaction_hash = ?", hash)
 
 	return q.Get(dest, sql)
+}
+
+// TransactionsByIDs fetches transactions from the `history_transactions` table
+// which match the given ids
+func (q *Q) TransactionsByIDs(ids ...int64) (map[int64]Transaction, error) {
+	if len(ids) == 0 {
+		return nil, errors.New("no id arguments provided")
+	}
+
+	in := fmt.Sprintf("ht.id IN (%s)", sq.Placeholders(len(ids)))
+
+	whereArgs := make([]interface{}, len(ids))
+	for i, id := range ids {
+		whereArgs[i] = id
+	}
+
+	sql := selectTransaction.Where(in, whereArgs...)
+
+	var transactions []Transaction
+
+	if err := q.Select(&transactions, sql); err != nil {
+		return nil, err
+	}
+	byID := map[int64]Transaction{}
+
+	for _, transaction := range transactions {
+		byID[transaction.TotalOrderID.ID] = transaction
+	}
+
+	return byID, nil
 }
 
 // Transactions provides a helper to filter rows from the `history_transactions`
