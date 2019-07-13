@@ -46,6 +46,7 @@ type OperationIndexAction struct {
 	Page                hal.Page
 	IncludeFailed       bool
 	IncludeTransactions bool
+	OnlyPayments        bool
 }
 
 // JSON is a method for actions.JSON
@@ -130,12 +131,12 @@ func (action *OperationIndexAction) loadParams() {
 	action.TransactionFilter = action.GetStringFromURLParam("tx_id")
 	action.PagingParams = action.GetPageQuery()
 	action.IncludeFailed = action.GetBool("include_failed")
-	if parsed, err := parseJoinField(&action.Action.Base); err != nil {
+	parsed, err := parseJoinField(&action.Action.Base)
+	if err != nil {
 		action.Err = err
 		return
-	} else {
-		action.IncludeTransactions = parsed[joinTransactions]
 	}
+	action.IncludeTransactions = parsed[joinTransactions]
 
 	filters, err := countNonEmpty(
 		action.AccountFilter,
@@ -167,9 +168,42 @@ func (action *OperationIndexAction) loadParams() {
 	}
 }
 
+func validateTransactionForOperation(transaction history.Transaction, operation history.Operation) error {
+	if transaction.ID != operation.TransactionID {
+		return errors.Errorf(
+			"transaction id %v does not match transaction id in operation %v",
+			transaction.ID,
+			operation.TransactionID,
+		)
+	}
+	if transaction.TransactionHash != operation.TransactionHash {
+		return errors.Errorf(
+			"transaction hash %v does not match transaction hash in operation %v",
+			transaction.TransactionHash,
+			operation.TransactionHash,
+		)
+	}
+	if transaction.TxResult != operation.TxResult {
+		return errors.Errorf(
+			"transaction result %v does not match transaction result in operation %v",
+			transaction.TxResult,
+			operation.TxResult,
+		)
+	}
+	if transaction.IsSuccessful() != operation.IsTransactionSuccessful() {
+		return errors.Errorf(
+			"transaction successful flag %v does not match transaction successful flag in operation %v",
+			transaction.IsSuccessful(),
+			operation.IsTransactionSuccessful(),
+		)
+	}
+
+	return nil
+}
+
 func (action *OperationIndexAction) loadRecords() {
 	q := action.HistoryQ()
-	ops := q.Operations(action.IncludeTransactions)
+	ops := q.Operations()
 
 	switch {
 	case action.AccountFilter != "":
@@ -187,12 +221,25 @@ func (action *OperationIndexAction) loadRecords() {
 		ops.IncludeFailed()
 	}
 
+	if action.IncludeTransactions {
+		ops.IncludeTransactions()
+	}
+
+	if action.OnlyPayments {
+		ops.OnlyPayments()
+	}
+
 	action.OperationRecords, action.TransactionRecords, action.Err = ops.Page(action.PagingParams).Fetch()
 	if action.Err != nil {
 		return
 	}
 
-	for _, o := range action.OperationRecords {
+	if action.IncludeTransactions && len(action.TransactionRecords) != len(action.OperationRecords) {
+		action.Err = errors.New("number of transactions doesn't match number of operations")
+		return
+	}
+
+	for i, o := range action.OperationRecords {
 		if !action.IncludeFailed && action.TransactionFilter == "" {
 			if !o.IsTransactionSuccessful() {
 				action.Err = errors.Errorf("Corrupted data! `include_failed=false` but returned transaction in /operations is failed: %s", o.TransactionHash)
@@ -207,6 +254,13 @@ func (action *OperationIndexAction) loadRecords() {
 
 			if resultXDR.Result.Code != xdr.TransactionResultCodeTxSuccess {
 				action.Err = errors.Errorf("Corrupted data! `include_failed=false` but returned transaction /operations is failed: %s %s", o.TransactionHash, o.TxResult)
+				return
+			}
+		}
+		if action.IncludeTransactions {
+			transaction := action.TransactionRecords[i]
+			action.Err = validateTransactionForOperation(transaction, o)
+			if action.Err != nil {
 				return
 			}
 		}
@@ -267,18 +321,29 @@ type OperationShowAction struct {
 
 func (action *OperationShowAction) loadParams() {
 	action.ID = action.GetInt64("id")
-	if parsed, err := parseJoinField(&action.Action.Base); err != nil {
+	parsed, err := parseJoinField(&action.Action.Base)
+	if err != nil {
 		action.Err = err
 		return
-	} else {
-		action.IncludeTransactions = parsed[joinTransactions]
 	}
+	action.IncludeTransactions = parsed[joinTransactions]
 }
 
 func (action *OperationShowAction) loadRecord() {
 	action.OperationRecord, action.TransactionRecord, action.Err = action.HistoryQ().OperationByID(
 		action.IncludeTransactions, action.ID,
 	)
+	if action.Err != nil {
+		return
+	}
+
+	if action.IncludeTransactions {
+		if action.TransactionRecord == nil {
+			action.Err = errors.Errorf("could not find transaction for operation %v", action.ID)
+			return
+		}
+		action.Err = validateTransactionForOperation(*action.TransactionRecord, action.OperationRecord)
+	}
 }
 
 func (action *OperationShowAction) loadLedger() {

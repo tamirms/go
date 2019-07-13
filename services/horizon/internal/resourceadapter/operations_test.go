@@ -25,6 +25,7 @@ func TestPopulateOperation_Successful(t *testing.T) {
 
 	PopulateBaseOperation(ctx, &dest, row, nil, ledger)
 	assert.True(t, dest.TransactionSuccessful)
+	assert.Nil(t, dest.Transaction)
 
 	dest = operations.Base{}
 	val = true
@@ -32,6 +33,7 @@ func TestPopulateOperation_Successful(t *testing.T) {
 
 	PopulateBaseOperation(ctx, &dest, row, nil, ledger)
 	assert.True(t, dest.TransactionSuccessful)
+	assert.Nil(t, dest.Transaction)
 
 	dest = operations.Base{}
 	val = false
@@ -39,4 +41,28 @@ func TestPopulateOperation_Successful(t *testing.T) {
 
 	PopulateBaseOperation(ctx, &dest, row, nil, ledger)
 	assert.False(t, dest.TransactionSuccessful)
+	assert.Nil(t, dest.Transaction)
+}
+
+// TestPopulateOperation_WithTransaction tests PopulateBaseOperation when passing both an operation and a transaction.
+func TestPopulateOperation_WithTransaction(t *testing.T) {
+	ctx, _ := test.ContextWithLogBuffer()
+
+	var (
+		dest           operations.Base
+		operationsRow  history.Operation
+		val            bool
+		ledger         = history.Ledger{}
+		transactionRow history.Transaction
+	)
+
+	dest = operations.Base{}
+	val = true
+	operationsRow = history.Operation{TransactionSuccessful: &val}
+	transactionRow = history.Transaction{Successful: &val, MaxFee: 10000, FeeCharged: 100}
+
+	PopulateBaseOperation(ctx, &dest, operationsRow, &transactionRow, ledger)
+	assert.True(t, dest.TransactionSuccessful)
+	assert.True(t, dest.Transaction.Successful)
+	assert.Equal(t, int32(100), dest.Transaction.FeePaid)
 }

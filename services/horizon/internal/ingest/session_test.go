@@ -94,7 +94,7 @@ func Test_ingestBumpSeq(t *testing.T) {
 	q := &history.Q{Session: tt.HorizonSession()}
 
 	//ensure bumpseq operations
-	ops, _, err := q.Operations(false).ForAccount("GCQZP3IU7XU6EJ63JZXKCQOYT2RNXN3HB5CNHENNUEUHSMA4VUJJJSEN").Fetch()
+	ops, _, err := q.Operations().ForAccount("GCQZP3IU7XU6EJ63JZXKCQOYT2RNXN3HB5CNHENNUEUHSMA4VUJJJSEN").Fetch()
 	tt.Require.NoError(err)
 	if tt.Assert.Len(ops, 5) {
 		//first is create account, and then bump sequences

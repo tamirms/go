@@ -64,12 +64,12 @@ func (q *Q) OperationFeeStats(currentSeq int32, dest *FeeStats) error {
 
 // Operations provides a helper to filter the operations table with pre-defined
 // filters.  See `OperationsQ` for the available filters.
-func (q *Q) Operations(includeTransactions bool) *OperationsQ {
+func (q *Q) Operations() *OperationsQ {
 	query := &OperationsQ{
 		parent:              q,
 		opIdCol:             "hop.id",
 		includeFailed:       false,
-		includeTransactions: includeTransactions,
+		includeTransactions: false,
 		sql:                 selectOperation,
 	}
 
@@ -175,6 +175,12 @@ func (q *OperationsQ) OnlyPayments() *OperationsQ {
 // IncludeFailed changes the query to include failed transactions.
 func (q *OperationsQ) IncludeFailed() *OperationsQ {
 	q.includeFailed = true
+	return q
+}
+
+// IncludeTransactions changes the query to fetch transaction data in addition to operation records.
+func (q *OperationsQ) IncludeTransactions() *OperationsQ {
+	q.includeTransactions = true
 	return q
 }
 
