@@ -1,8 +1,6 @@
 package history
 
 import (
-	"fmt"
-
 	sq "github.com/Masterminds/squirrel"
 	"github.com/stellar/go/services/horizon/internal/db2"
 	"github.com/stellar/go/services/horizon/internal/toid"
@@ -35,22 +33,16 @@ func (q *Q) TransactionsByIDs(ids ...int64) (map[int64]Transaction, error) {
 		return nil, errors.New("no id arguments provided")
 	}
 
-	in := fmt.Sprintf("ht.id IN (%s)", sq.Placeholders(len(ids)))
-
-	whereArgs := make([]interface{}, len(ids))
-	for i, id := range ids {
-		whereArgs[i] = id
-	}
-
-	sql := selectTransaction.Where(in, whereArgs...)
+	sql := selectTransaction.Where(map[string]interface{}{
+		"ht.id": ids,
+	})
 
 	var transactions []Transaction
-
 	if err := q.Select(&transactions, sql); err != nil {
 		return nil, err
 	}
-	byID := map[int64]Transaction{}
 
+	byID := map[int64]Transaction{}
 	for _, transaction := range transactions {
 		byID[transaction.TotalOrderID.ID] = transaction
 	}

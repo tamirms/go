@@ -194,7 +194,7 @@ func (q *OperationsQ) Page(page db2.PageQuery) *OperationsQ {
 	return q
 }
 
-// Fetch returns results of the query specified by `q`
+// Fetch returns results specified by a filtered operations query
 func (q *OperationsQ) Fetch() ([]Operation, []Transaction, error) {
 	if q.Err != nil {
 		return nil, nil, q.Err

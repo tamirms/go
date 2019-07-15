@@ -308,7 +308,7 @@ func (action *OperationIndexAction) loadPage() {
 // Interface verification
 var _ actions.JSONer = (*OperationShowAction)(nil)
 
-// OperationShowAction renders a ledger found by its sequence number.
+// OperationShowAction renders a page of operation resources.
 type OperationShowAction struct {
 	Action
 	ID                  int64
