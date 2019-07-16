@@ -202,6 +202,17 @@ SET default_tablespace = '';
 SET default_with_oids = false;
 
 --
+-- Name: accounts_signers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE accounts_signers (
+    account character varying(64),
+    signer character varying(64),
+    weight integer NOT NULL,
+    PRIMARY KEY (signer, account)
+);
+
+--
 -- Name: asset_stats; Type: TABLE; Schema: public; Owner: -
 --
 
