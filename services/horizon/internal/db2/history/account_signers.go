@@ -8,7 +8,8 @@ import (
 
 // AccountsForSigner returns a list of `AccountSigner` rows for a given signer
 func (q *Q) AccountsForSigner(signer string, page db2.PageQuery) ([]AccountSigner, error) {
-	sql, err := page.ApplyTo(selectAccountSigners.Where("accounts_signers.signer = ?", signer), "accounts_signers.account")
+	sql := selectAccountSigners.Where("accounts_signers.signer = ?", signer)
+	sql, err := page.ApplyTo(sql, "accounts_signers.account")
 	if err != nil {
 		return nil, errors.Wrap(err, "could not apply query to page")
 	}
@@ -27,6 +28,17 @@ func (q *Q) CreateAccountSigner(account, signer string, weight int32) error {
 		Columns("account", "signer", "weight").
 		Values(account, signer, weight).
 		Suffix("ON CONFLICT (signer, account) DO UPDATE SET weight=EXCLUDED.weight")
+
+	_, err := q.Exec(sql)
+	return err
+}
+
+// RemoveAccountSigner deletes a row in the accounts_signers table
+func (q *Q) RemoveAccountSigner(account, signer string) error {
+	sql := sq.Delete("accounts_signers").Where(sq.Eq{
+		"account": account,
+		"signer":  signer,
+	})
 
 	_, err := q.Exec(sql)
 	return err
