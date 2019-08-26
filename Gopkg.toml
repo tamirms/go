@@ -88,3 +88,12 @@
 [[constraint]]
   branch = "master"
   name = "github.com/shurcooL/httpfs"
+
+# We are using `github.com/docker/engine` as source since it has tagged
+# versions, unlike `github.com/moby/moby`, please read
+# https://github.com/moby/moby/issues/38063#issuecomment-431324613 for a
+# detailed explanation.
+[[constraint]]
+  name = "github.com/docker/docker"
+  source = "github.com/docker/engine"
+  version = "19.03.1"

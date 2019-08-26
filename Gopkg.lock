@@ -40,6 +40,17 @@
   revision = "20f192218cf52a73397fa2df45bdda720f3e47c8"
 
 [[projects]]
+  digest = "1:39805d87640f58a20344f21f0158299802dc6395464ba3848b9aec8b068057ea"
+  name = "github.com/Microsoft/go-winio"
+  packages = [
+    ".",
+    "pkg/guid",
+  ]
+  pruneopts = "T"
+  revision = "6c72808b55902eae4c5943626030429ff20f3b63"
+  version = "v0.4.14"
+
+[[projects]]
   branch = "master"
   digest = "1:0f58bf4103da77bfd026185b49755f4cd020fec4f12657ea4609d9de4593513c"
   name = "github.com/ajg/form"
@@ -144,6 +155,66 @@
   packages = ["spew"]
   pruneopts = "T"
   revision = "5215b55f46b2b919f50a1df0eaa5886afe4e3b3d"
+
+[[projects]]
+  digest = "1:d4f83648c3259dd3d07b0f98d505d3e2d2fd0c9388671a76d0e54041b8006338"
+  name = "github.com/docker/distribution"
+  packages = [
+    "digestset",
+    "reference",
+    "registry/api/errcode",
+  ]
+  pruneopts = "T"
+  revision = "2461543d988979529609e8cb6fca9ca190dc48da"
+  version = "v2.7.1"
+
+[[projects]]
+  digest = "1:3abe09d91011f8792dc13caae72bdce42a0a8d5104fece5a45853d673426fd49"
+  name = "github.com/docker/docker"
+  packages = [
+    "api",
+    "api/types",
+    "api/types/blkiodev",
+    "api/types/container",
+    "api/types/events",
+    "api/types/filters",
+    "api/types/image",
+    "api/types/mount",
+    "api/types/network",
+    "api/types/registry",
+    "api/types/strslice",
+    "api/types/swarm",
+    "api/types/swarm/runtime",
+    "api/types/time",
+    "api/types/versions",
+    "api/types/volume",
+    "client",
+    "errdefs",
+  ]
+  pruneopts = "T"
+  revision = "fa8dd90ceb7bcb9d554d27e0b9087ab83e54bd2b"
+  source = "github.com/docker/engine"
+  version = "v19.03.1"
+
+[[projects]]
+  digest = "1:b64eea95d41af3792092af9c951efcd2d8d8bfd2335c851f7afaf54d6be12c66"
+  name = "github.com/docker/go-connections"
+  packages = [
+    "nat",
+    "sockets",
+    "tlsconfig",
+  ]
+  pruneopts = "T"
+  revision = "7395e3f8aa162843a74ed6d48e79627d9792ac55"
+  version = "v0.4.0"
+
+[[projects]]
+  digest = "1:e95ef557dc3120984bb66b385ae01b4bb8ff56bcde28e7b0d1beed0cccc4d69f"
+  name = "github.com/docker/go-units"
+  packages = ["."]
+  pruneopts = "T"
+  revision = "519db1ee28dcc9fd2474ae59fca29a810482bfb1"
+  version = "v0.4.0"
 
 [[projects]]
   digest = "1:044b2f1eea2f5cfb0d3678baf60892734f59d5c2ea3932cb6ed894a97ccba15c"
@@ -254,12 +325,34 @@
   version = "v1.6.0"
 
 [[projects]]
+  digest = "1:c6e109ed32d266dea072dd6d00e3ee26fb960f86ed0ba7f6a07e5d2bfdeab868"
+  name = "github.com/gogo/protobuf"
+  packages = ["proto"]
+  pruneopts = "T"
+  revision = "ba06b47c162d49f2af050fb4c75bcbc86a159d5c"
+  version = "v1.2.1"
+
+[[projects]]
   branch = "master"
   digest = "1:205b3c069003f9d1458e4304427ab3652d8d7bac3bde1568a2d5486451e453bd"
   name = "github.com/goji/httpauth"
   packages = ["."]
   pruneopts = "T"
   revision = "2da839ab0f4df05a6db5eb277995589dadbd4fb9"
+
+[[projects]]
+  digest = "1:ee6b8c03e5ab6cf9628a3c538430d007f8534483dc46c7ff5955a4359d5ef865"
+  name = "github.com/golang/protobuf"
+  packages = [
+    "proto",
+    "ptypes",
+    "ptypes/any",
+    "ptypes/duration",
+    "ptypes/timestamp",
+  ]
+  pruneopts = "T"
+  revision = "6c65a5562fc06764971b7c5d05c76c75e84bdbf7"
+  version = "v1.3.2"
 
 [[projects]]
   digest = "1:eca5b59a68125905e4f62d6f5072f01740a7648a808e93f6d76c5334ff948601"
@@ -534,6 +627,25 @@
   ]
   pruneopts = "T"
   revision = "649b44d988ce182cabcda7dba01fcf3b6179ad19"
+
+[[projects]]
+  digest = "1:ee4d4af67d93cc7644157882329023ce9a7bcfce956a079069a9405521c7cc8d"
+  name = "github.com/opencontainers/go-digest"
+  packages = ["."]
+  pruneopts = "T"
+  revision = "279bed98673dd5bef374d3b6e4b09e2af76183bf"
+  version = "v1.0.0-rc1"
+
+[[projects]]
+  digest = "1:eb47da2fdabb69f64ce3a42a1790ec0ed9da6718c8378f3fdc41cbe6af184519"
+  name = "github.com/opencontainers/image-spec"
+  packages = [
+    "specs-go",
+    "specs-go/v1",
+  ]
+  pruneopts = "T"
+  revision = "d60099175f88c47cd379c4738d158884749ed235"
+  version = "v1.0.1"
 
 [[projects]]
   digest = "1:a88448fcd2802025fa764388e12f31f0a64d5d436b369a71b97a6c9da783fafe"
@@ -817,6 +929,7 @@
     "http2/hpack",
     "idna",
     "lex/httplex",
+    "proxy",
     "publicsuffix",
     "websocket",
   ]
@@ -857,6 +970,28 @@
   ]
   pruneopts = "T"
   revision = "1cbadb444a806fd9430d14ad08967ed91da4fa0a"
+
+[[projects]]
+  branch = "master"
+  digest = "1:e1505a39ad844b6a89856ffb97363cc47cbee0c511c1423d2d9c673cc4a215a0"
+  name = "google.golang.org/genproto"
+  packages = ["googleapis/rpc/status"]
+  pruneopts = "T"
+  revision = "24fa4b261c55da65468f2abfdae2b024eef27dfb"
+
+[[projects]]
+  digest = "1:92bc59c5f3ca559a2ec0a39256c767b2759cbec8bba4fce5811f8f509046f0f2"
+  name = "google.golang.org/grpc"
+  packages = [
+    "codes",
+    "connectivity",
+    "grpclog",
+    "internal",
+    "status",
+  ]
+  pruneopts = "T"
+  revision = "6eaf6f47437a6b4e2153a190160ef39a92c7eceb"
+  version = "v1.23.0"
 
 [[projects]]
   digest = "1:3ccd10c863188cfe0d936fcfe6a055c95362e43af8e7039e33baade846928e74"
@@ -928,6 +1063,9 @@
     "github.com/btcsuite/btcd/txscript",
     "github.com/btcsuite/btcd/wire",
     "github.com/btcsuite/btcutil",
+    "github.com/docker/docker/api/types",
+    "github.com/docker/docker/api/types/container",
+    "github.com/docker/docker/client",
     "github.com/elazarl/go-bindata-assetfs",
     "github.com/ethereum/go-ethereum/common",
     "github.com/ethereum/go-ethereum/core/types",
