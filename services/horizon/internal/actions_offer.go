@@ -196,8 +196,7 @@ type GetAccountOffersHandle struct {
 	historyQ *history.Q
 }
 
-// ServeHTTP implements the http.Handler interface
-func (handler GetAccountOffersHandle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (handler GetAccountOffersHandle) GetOffers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	pq, err := actions.GetPageQuery(r)
 
@@ -242,6 +241,11 @@ func (handler GetAccountOffersHandle) ServeHTTP(w http.ResponseWriter, r *http.R
 	page.FullURL = actions.FullURL(ctx)
 	page.PopulateLinks()
 	httpjson.Render(w, page, httpjson.HALJSON)
+}
+
+// ServeHTTP implements the http.Handler interface
+func (handler GetAccountOffersHandle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	handler.GetOffers(w, r)
 }
 
 func buildOffersPage(ctx context.Context, historyQ *history.Q, page *hal.Page, records *[]history.Offer) error {
