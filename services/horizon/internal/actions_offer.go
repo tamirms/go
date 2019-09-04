@@ -9,6 +9,8 @@ import (
 	"github.com/stellar/go/services/horizon/internal/db2"
 	"github.com/stellar/go/services/horizon/internal/db2/core"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
+	"github.com/stellar/go/services/horizon/internal/render"
+	hProblem "github.com/stellar/go/services/horizon/internal/render/problem"
 	"github.com/stellar/go/services/horizon/internal/render/sse"
 	"github.com/stellar/go/services/horizon/internal/resourceadapter"
 	"github.com/stellar/go/support/errors"
@@ -196,7 +198,7 @@ type GetAccountOffersHandle struct {
 	historyQ *history.Q
 }
 
-func (handler GetAccountOffersHandle) GetOffers(w http.ResponseWriter, r *http.Request) {
+func (handler GetAccountOffersHandle) getOffers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	pq, err := actions.GetPageQuery(r)
 
@@ -243,9 +245,24 @@ func (handler GetAccountOffersHandle) GetOffers(w http.ResponseWriter, r *http.R
 	httpjson.Render(w, page, httpjson.HALJSON)
 }
 
+func (handler GetAccountOffersHandle) streamOffers(w http.ResponseWriter, r *http.Request) {
+}
+
 // ServeHTTP implements the http.Handler interface
 func (handler GetAccountOffersHandle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	handler.GetOffers(w, r)
+	// TODO: Validate cursor within history
+	ctx := r.Context()
+
+	switch render.Negotiate(r) {
+	case render.MimeHal, render.MimeJSON:
+		handler.getOffers(w, r)
+		return
+	case render.MimeEventStream:
+		handler.streamOffers(w, r)
+		return
+	}
+
+	problem.Render(ctx, w, hProblem.NotAcceptable)
 }
 
 func buildOffersPage(ctx context.Context, historyQ *history.Q, page *hal.Page, records *[]history.Offer) error {
