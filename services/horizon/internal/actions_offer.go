@@ -9,8 +9,6 @@ import (
 	"github.com/stellar/go/services/horizon/internal/db2"
 	"github.com/stellar/go/services/horizon/internal/db2/core"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
-	"github.com/stellar/go/services/horizon/internal/render"
-	hProblem "github.com/stellar/go/services/horizon/internal/render/problem"
 	"github.com/stellar/go/services/horizon/internal/render/sse"
 	"github.com/stellar/go/services/horizon/internal/resourceadapter"
 	"github.com/stellar/go/support/errors"
@@ -126,13 +124,13 @@ func (action *OffersByAccountAction) loadPage() {
 	action.Page.PopulateLinks()
 }
 
-// GetOffersHandle is the http handler for the /offers endpoint
-type GetOffersHandle struct {
+// GetOffersHandler is the http handler for the /offers endpoint
+type GetOffersHandler struct {
 	historyQ *history.Q
 }
 
 // ServeHTTP implements the http.Handler interface
-func (handler GetOffersHandle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (handler GetOffersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	pq, err := actions.GetPageQuery(r)
 
@@ -176,42 +174,39 @@ func (handler GetOffersHandle) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	page := hal.Page{
-		Cursor: pq.Cursor,
-		Order:  pq.Order,
-		Limit:  pq.Limit,
-	}
-
-	err = buildOffersPage(ctx, handler.historyQ, &page, &records)
-
-	if err != nil {
-		problem.Render(ctx, w, err)
-	}
-
-	page.FullURL = actions.FullURL(ctx)
-	page.PopulateLinks()
-	httpjson.Render(w, page, httpjson.HALJSON)
-}
-
-// GetAccountOffersHandle is the http handler for the /accounts/{account_id}/offers endpoint when using experimental ingestion.
-type GetAccountOffersHandle struct {
-	historyQ *history.Q
-}
-
-func (handler GetAccountOffersHandle) getOffers(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	pq, err := actions.GetPageQuery(r)
-
+	offers, err := buildOffersResponse(ctx, handler.historyQ, &records)
 	if err != nil {
 		problem.Render(ctx, w, err)
 		return
+	}
+
+	httpjson.Render(
+		w,
+		buildOffersPage(ctx, query.PageQuery, offers),
+		httpjson.HALJSON,
+	)
+
+}
+
+// GetAccountOffersHandler is the http handler for the /accounts/{account_id}/offers endpoint when using experimental ingestion.
+type GetAccountOffersHandler struct {
+	historyQ     *history.Q
+	steamHandler StreamHandler
+}
+
+func (handler GetAccountOffersHandler) parseOffersQuery(w http.ResponseWriter, r *http.Request) (history.OffersQuery, bool) {
+	ctx := r.Context()
+
+	pq, err := actions.GetPageQuery(r)
+	if err != nil {
+		problem.Render(ctx, w, err)
+		return history.OffersQuery{}, false
 	}
 
 	seller, err := actions.GetString(r, "account_id")
-
 	if err != nil {
 		problem.Render(ctx, w, err)
-		return
+		return history.OffersQuery{}, false
 	}
 
 	query := history.OffersQuery{
@@ -221,51 +216,71 @@ func (handler GetAccountOffersHandle) getOffers(w http.ResponseWriter, r *http.R
 		Buying:    nil,
 	}
 
-	records, err := handler.historyQ.GetOffers(query)
+	return query, true
+}
 
+func (handler GetAccountOffersHandler) getOffers(w http.ResponseWriter, r *http.Request) {
+	query, valid := handler.parseOffersQuery(w, r)
+	if !valid {
+		return
+	}
+
+	ctx := r.Context()
+	records, err := handler.historyQ.GetOffers(query)
 	if err != nil {
 		problem.Render(ctx, w, err)
 		return
 	}
 
-	page := hal.Page{
-		Cursor: pq.Cursor,
-		Order:  pq.Order,
-		Limit:  pq.Limit,
-	}
-
-	err = buildOffersPage(ctx, handler.historyQ, &page, &records)
-
+	offers, err := buildOffersResponse(ctx, handler.historyQ, &records)
 	if err != nil {
 		problem.Render(ctx, w, err)
+		return
 	}
 
-	page.FullURL = actions.FullURL(ctx)
-	page.PopulateLinks()
-	httpjson.Render(w, page, httpjson.HALJSON)
+	httpjson.Render(
+		w,
+		buildOffersPage(ctx, query.PageQuery, offers),
+		httpjson.HALJSON,
+	)
 }
 
-func (handler GetAccountOffersHandle) streamOffers(w http.ResponseWriter, r *http.Request) {
-}
-
-// ServeHTTP implements the http.Handler interface
-func (handler GetAccountOffersHandle) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// TODO: Validate cursor within history
+func (handler GetAccountOffersHandler) streamOffers(w http.ResponseWriter, r *http.Request) {
+	query, valid := handler.parseOffersQuery(w, r)
+	if !valid {
+		return
+	}
 	ctx := r.Context()
 
-	switch render.Negotiate(r) {
-	case render.MimeHal, render.MimeJSON:
-		handler.getOffers(w, r)
-		return
-	case render.MimeEventStream:
-		handler.streamOffers(w, r)
-		return
-	}
+	handler.steamHandler.ServeStream(
+		w,
+		r,
+		int(query.PageQuery.Limit),
+		func() ([]sse.Event, error) {
+			records, err := handler.historyQ.GetOffers(query)
+			if err != nil {
+				return nil, err
+			}
+			offers, err := buildOffersResponse(ctx, handler.historyQ, &records)
+			if err != nil {
+				return nil, err
+			}
 
-	problem.Render(ctx, w, hProblem.NotAcceptable)
+			var events []sse.Event
+			for _, offer := range offers {
+				events = append(events, sse.Event{ID: offer.PagingToken(), Data: offer})
+			}
+
+			if len(events) > 0 {
+				query.PageQuery.Cursor = events[len(events)-1].ID
+			}
+
+			return events, nil
+		},
+	)
 }
 
-func buildOffersPage(ctx context.Context, historyQ *history.Q, page *hal.Page, records *[]history.Offer) error {
+func buildOffersResponse(ctx context.Context, historyQ *history.Q, records *[]history.Offer) ([]horizon.Offer, error) {
 	ledgerCache := history.LedgerCache{}
 	for _, record := range *records {
 		ledgerCache.Queue(int32(record.LastModifiedLedger))
@@ -274,9 +289,10 @@ func buildOffersPage(ctx context.Context, historyQ *history.Q, page *hal.Page, r
 	err := ledgerCache.Load(historyQ)
 
 	if err != nil {
-		return errors.Wrap(err, "failed to load ledger batch")
+		return nil, errors.Wrap(err, "failed to load ledger batch")
 	}
 
+	var offers []horizon.Offer
 	for _, record := range *records {
 		var offerResponse horizon.Offer
 
@@ -287,8 +303,28 @@ func buildOffersPage(ctx context.Context, historyQ *history.Q, page *hal.Page, r
 		}
 
 		resourceadapter.PopulateHistoryOffer(ctx, &offerResponse, record, ledgerPtr)
-		page.Add(offerResponse)
+		offers = append(offers, offerResponse)
 	}
 
-	return nil
+	return offers, nil
+}
+
+func buildOffersPage(
+	ctx context.Context,
+	pageQuery db2.PageQuery,
+	offers []horizon.Offer,
+) hal.Page {
+	page := hal.Page{
+		Cursor: pageQuery.Cursor,
+		Order:  pageQuery.Order,
+		Limit:  pageQuery.Limit,
+	}
+
+	for _, offer := range offers {
+		page.Add(offer)
+	}
+
+	page.FullURL = actions.FullURL(ctx)
+	page.PopulateLinks()
+	return page
 }

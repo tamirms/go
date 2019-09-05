@@ -160,18 +160,26 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 			r.Get("/operations", OperationIndexAction{}.Handle)
 			r.Get("/payments", OperationIndexAction{OnlyPayments: true}.Handle)
 			r.Get("/effects", EffectIndexAction{}.Handle)
-			r.Get("/offers", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				ctx := r.Context()
-				app := AppFromContext(ctx)
-				// Using this function as a temporal workaround since StartHTTPTest doesn't let us pass value to the initial config.
-				if app.config.EnableExperimentalIngestion {
-					offersHandle := GetAccountOffersHandle{historyQ: app.HistoryQ()}
-					// We know experimental ingestion is enabled, but we still need to call the middleware to check ingestion state
-					requiresExperimentalIngestion(offersHandle).ServeHTTP(w, r)
-				} else {
-					OffersByAccountAction{}.Handle(w, r)
-				}
-			}))
+
+			offersHandler := GetAccountOffersHandler{
+				historyQ: w.historyQ,
+				steamHandler: StreamHandler{
+					RateLimiter:        w.rateLimiter,
+					SSEUpdateFrequency: w.sseUpdateFrequency,
+				},
+			}
+			r.Method(
+				http.MethodGet,
+				"/offers",
+				experimentalIngestionOrFallback(
+					restOrStream(
+						http.HandlerFunc(offersHandler.getOffers),
+						http.HandlerFunc(offersHandler.streamOffers),
+					),
+					http.HandlerFunc(OffersByAccountAction{}.Handle),
+				),
+			)
+
 			r.Get("/trades", TradeIndexAction{}.Handle)
 			r.Get("/data/{key}", DataShowAction{}.Handle)
 		})
@@ -207,7 +215,7 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 
 	r.Route("/offers", func(r chi.Router) {
 		r.With(acceptOnlyJSON, requiresExperimentalIngestion).
-			Method(http.MethodGet, "/", GetOffersHandle{historyQ: w.historyQ})
+			Method(http.MethodGet, "/", GetOffersHandler{historyQ: w.historyQ})
 		r.With(acceptOnlyJSON, requiresExperimentalIngestion).
 			Get("/{id}", getOfferResource)
 		r.Get("/{offer_id}/trades", TradeIndexAction{}.Handle)
