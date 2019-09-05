@@ -127,6 +127,24 @@ func installPathFindingRoutes(
 	})
 }
 
+func installAccountOfferRoute(
+	offersHandler GetAccountOffersHandler,
+	enableExperimentalIngestion bool,
+	r *chi.Mux,
+) {
+	path := "/accounts/{account_id}/offers"
+	var handler http.Handler
+	if enableExperimentalIngestion {
+		handler = restOrStream(
+			http.HandlerFunc(offersHandler.getOffers),
+			http.HandlerFunc(offersHandler.streamOffers),
+		)
+	} else {
+		handler = http.HandlerFunc(OffersByAccountAction{}.Handle)
+	}
+	r.Method(http.MethodGet, path, handler)
+}
+
 // mustInstallActions installs the routing configuration of horizon onto the
 // provided app.  All route registration should be implemented here.
 func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
@@ -161,29 +179,32 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 			r.Get("/payments", OperationIndexAction{OnlyPayments: true}.Handle)
 			r.Get("/effects", EffectIndexAction{}.Handle)
 
-			offersHandler := GetAccountOffersHandler{
-				historyQ: w.historyQ,
-				steamHandler: StreamHandler{
-					RateLimiter:        w.rateLimiter,
-					SSEUpdateFrequency: w.sseUpdateFrequency,
-				},
-			}
-			r.Method(
-				http.MethodGet,
-				"/offers",
-				experimentalIngestionOrFallback(
-					restOrStream(
-						http.HandlerFunc(offersHandler.getOffers),
-						http.HandlerFunc(offersHandler.streamOffers),
-					),
-					http.HandlerFunc(OffersByAccountAction{}.Handle),
-				),
-			)
+			// r.Method(
+			// 	http.MethodGet,
+			// 	"/offers",
+			// 	experimentalIngestionOrFallback(
+			// 		restOrStream(
+			// 			http.HandlerFunc(offersHandler.getOffers),
+			// 			http.HandlerFunc(offersHandler.streamOffers),
+			// 		),
+			// 		http.HandlerFunc(OffersByAccountAction{}.Handle),
+			// 	),
+			// )
 
 			r.Get("/trades", TradeIndexAction{}.Handle)
 			r.Get("/data/{key}", DataShowAction{}.Handle)
 		})
 	})
+	offersHandler := GetAccountOffersHandler{
+		historyQ: w.historyQ,
+		streamHandler: StreamHandler{
+			RateLimiter: w.rateLimiter,
+			LedgerSource: HistoryDBLedgerSource{
+				SSEUpdateFrequency: w.sseUpdateFrequency,
+			},
+		},
+	}
+	installAccountOfferRoute(offersHandler, config.EnableExperimentalIngestion, r)
 
 	// transaction history actions
 	r.Route("/transactions", func(r chi.Router) {

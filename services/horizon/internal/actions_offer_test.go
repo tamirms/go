@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi"
 	"github.com/stellar/go/protocols/horizon"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
 	"github.com/stellar/go/services/horizon/internal/render/problem"
@@ -292,6 +294,138 @@ func TestOfferActions_AccountIndexExperimentalIngestion(t *testing.T) {
 		}
 	}
 }
+
+func accountOffersClient(tt *test.T, handler GetAccountOffersHandler) test.RequestHelper {
+	router := chi.NewRouter()
+
+	installAccountOfferRoute(handler, true, router)
+	return test.NewRequestHelper(router)
+}
+
+type streamTest struct {
+	client test.RequestHelper
+	uri    string
+	cancel context.CancelFunc
+	done   chan bool
+}
+
+func newStreamTest(client test.RequestHelper, uri string) *streamTest {
+	return &streamTest{
+		client: client,
+		uri:    uri,
+	}
+}
+
+func (s *streamTest) run(checkResponse func(w *httptest.ResponseRecorder)) {
+	var ctx context.Context
+	ctx, s.cancel = context.WithCancel(context.Background())
+	s.done = make(chan bool)
+
+	go func() {
+		w := s.client.Get(
+			s.uri,
+			test.RequestHelperStreaming,
+			func(r *http.Request) {
+				*r = *r.WithContext(ctx)
+			},
+		)
+
+		checkResponse(w)
+		s.done <- true
+	}()
+}
+
+func (s *streamTest) wait() {
+	s.cancel()
+	<-s.done
+}
+
+func TestOfferActions_AccountSSEExperimentalIngestion(t *testing.T) {
+	tt := test.Start(t)
+	test.ResetHorizonDB(t, tt.HorizonDB)
+
+	q := &history.Q{tt.HorizonSession()}
+
+	ledgerSource := NewTestingLedgerSource(3)
+
+	handler := GetAccountOffersHandler{
+		historyQ: q,
+		streamHandler: StreamHandler{
+			RateLimiter:  maybeInitWebRateLimiter(NewTestConfig().RateQuota),
+			LedgerSource: ledgerSource,
+		},
+	}
+	client := accountOffersClient(tt, handler)
+
+	tt.Assert.NoError(q.UpdateLastLedgerExpIngest(3))
+	tt.Assert.NoError(q.UpsertOffer(eurOffer, 3))
+	tt.Assert.NoError(q.UpsertOffer(twoEurOffer, 3))
+	tt.Assert.NoError(q.UpsertOffer(usdOffer, 3))
+
+	ignoredUSDOffer := usdOffer
+	ignoredUSDOffer.OfferId = 3
+
+	includedEUROffer := eurOffer
+	includedEUROffer.OfferId = 11
+
+	otherIncludedEUROffer := eurOffer
+	otherIncludedEUROffer.OfferId = 12
+
+	st := newStreamTest(client, fmt.Sprintf("/accounts/%s/offers", issuer.Address()))
+	st.run(func(w *httptest.ResponseRecorder) {
+		var offers []horizon.Offer
+		for _, line := range strings.Split(w.Body.String(), "\n") {
+			if strings.HasPrefix(line, "data: {") {
+				jsonString := line[len("data: "):]
+				var offer horizon.Offer
+				err := json.Unmarshal([]byte(jsonString), &offer)
+				tt.Assert.NoError(err)
+				offers = append(offers, offer)
+			}
+		}
+
+		expectedOfferIds := []int64{
+			int64(eurOffer.OfferId),
+			int64(usdOffer.OfferId),
+			int64(includedEUROffer.OfferId),
+			int64(otherIncludedEUROffer.OfferId),
+		}
+
+		tt.Assert.Len(offers, len(expectedOfferIds))
+		for i, offer := range offers {
+			tt.Assert.Equal(issuer.Address(), offer.Seller)
+			tt.Assert.Equal(expectedOfferIds[i], offer.ID)
+		}
+	})
+
+	ledgerSource.AddLedger(4)
+
+	tt.Assert.NoError(q.UpsertOffer(ignoredUSDOffer, 1))
+	tt.Assert.NoError(q.UpsertOffer(includedEUROffer, 4))
+	tt.Assert.NoError(q.UpsertOffer(otherIncludedEUROffer, 5))
+
+	ledgerSource.AddLedger(6)
+
+	st.wait()
+
+	st = newStreamTest(client, fmt.Sprintf("/accounts/%s/offers?cursor=now", issuer.Address()))
+	st.run(func(w *httptest.ResponseRecorder) {
+		var offers []horizon.Offer
+		for _, line := range strings.Split(w.Body.String(), "\n") {
+			if strings.HasPrefix(line, "data: {") {
+				jsonString := line[len("data: "):]
+				var offer horizon.Offer
+				err := json.Unmarshal([]byte(jsonString), &offer)
+				tt.Assert.NoError(err)
+				offers = append(offers, offer)
+			}
+		}
+
+		tt.Assert.Len(offers, 0)
+	})
+	st.wait()
+}
+
 func TestOfferActions_AccountIndex(t *testing.T) {
 	ht := StartHTTPTest(t, "trades")
 	defer ht.Finish()

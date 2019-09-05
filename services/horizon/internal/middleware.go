@@ -247,23 +247,3 @@ func requiresExperimentalIngestion(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 }
-
-// experimentalIngestionOrFallback executes `withExpIngestion` if
-// experimental ingestion is enabled otherwise it executes `fallbackHandler`
-func experimentalIngestionOrFallback(
-	withExpIngestion http.Handler,
-	fallbackHandler http.Handler,
-) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		app := AppFromContext(ctx)
-		if app.config.EnableExperimentalIngestion {
-			// We know experimental ingestion is enabled, but we still need to call the middleware
-			// to check ingestion state
-			requiresExperimentalIngestion(withExpIngestion).ServeHTTP(w, r)
-			return
-		}
-
-		fallbackHandler.ServeHTTP(w, r)
-	})
-}

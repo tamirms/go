@@ -190,8 +190,8 @@ func (handler GetOffersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 // GetAccountOffersHandler is the http handler for the /accounts/{account_id}/offers endpoint when using experimental ingestion.
 type GetAccountOffersHandler struct {
-	historyQ     *history.Q
-	steamHandler StreamHandler
+	historyQ      *history.Q
+	streamHandler StreamHandler
 }
 
 func (handler GetAccountOffersHandler) parseOffersQuery(w http.ResponseWriter, r *http.Request) (history.OffersQuery, bool) {
@@ -252,7 +252,7 @@ func (handler GetAccountOffersHandler) streamOffers(w http.ResponseWriter, r *ht
 	}
 	ctx := r.Context()
 
-	handler.steamHandler.ServeStream(
+	handler.streamHandler.ServeStream(
 		w,
 		r,
 		int(query.PageQuery.Limit),
