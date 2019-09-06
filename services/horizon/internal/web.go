@@ -201,6 +201,7 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 			RateLimiter: w.rateLimiter,
 			LedgerSource: HistoryDBLedgerSource{
 				SSEUpdateFrequency: w.sseUpdateFrequency,
+				CurrentState:       ledger.CurrentState,
 			},
 		},
 	}

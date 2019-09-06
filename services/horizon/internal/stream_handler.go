@@ -16,29 +16,35 @@ type StreamHandler struct {
 }
 
 type LedgerSource interface {
-	CurrentLedger() int32
-	NextLedger(currentSequence int32) chan int32
+	CurrentLedger() uint32
+	NextLedger(currentSequence uint32) chan uint32
 }
+
+type CurrentStateFunc func() ledger.State
 
 type HistoryDBLedgerSource struct {
 	SSEUpdateFrequency time.Duration
+	CurrentState       CurrentStateFunc
 }
 
-func (source HistoryDBLedgerSource) CurrentLedger() int32 {
-	return ledger.CurrentState().HistoryLatest
+func (source HistoryDBLedgerSource) CurrentLedger() uint32 {
+	return source.CurrentState().ExpHistoryLatest
 }
 
-func (source HistoryDBLedgerSource) NextLedger(currentSequence int32) chan int32 {
+func (source HistoryDBLedgerSource) NextLedger(currentSequence uint32) chan uint32 {
 	// Make sure this is buffered channel of size 1. Otherwise, the go routine below
 	// will never return if `newLedgers` channel is not read. From Effective Go:
 	// > If the channel is unbuffered, the sender blocks until the receiver has received the value.
-	newLedgers := make(chan int32, 1)
+	newLedgers := make(chan uint32, 1)
 	go func() {
 		for {
-			time.Sleep(source.SSEUpdateFrequency)
-			currentLedgerState := ledger.CurrentState()
-			if currentLedgerState.HistoryLatest > currentSequence {
-				newLedgers <- currentLedgerState.HistoryLatest
+			if source.SSEUpdateFrequency > 0 {
+				time.Sleep(source.SSEUpdateFrequency)
+			}
+
+			currentLedgerState := source.CurrentState()
+			if currentLedgerState.ExpHistoryLatest > currentSequence {
+				newLedgers <- currentLedgerState.ExpHistoryLatest
 				return
 			}
 		}
@@ -106,25 +112,25 @@ func (handler StreamHandler) ServeStream(
 }
 
 type TestingLedgerSource struct {
-	currentLedger int32
-	newLedgers    chan int32
+	currentLedger uint32
+	newLedgers    chan uint32
 }
 
-func NewTestingLedgerSource(currentLedger int32) *TestingLedgerSource {
+func NewTestingLedgerSource(currentLedger uint32) *TestingLedgerSource {
 	return &TestingLedgerSource{
 		currentLedger: currentLedger,
-		newLedgers:    make(chan int32),
+		newLedgers:    make(chan uint32),
 	}
 }
 
-func (source *TestingLedgerSource) CurrentLedger() int32 {
+func (source *TestingLedgerSource) CurrentLedger() uint32 {
 	return source.currentLedger
 }
 
-func (source *TestingLedgerSource) AddLedger(nextSequence int32) {
+func (source *TestingLedgerSource) AddLedger(nextSequence uint32) {
 	source.newLedgers <- nextSequence
 }
 
-func (source *TestingLedgerSource) NextLedger(currentSequence int32) chan int32 {
+func (source *TestingLedgerSource) NextLedger(currentSequence uint32) chan uint32 {
 	return source.newLedgers
 }
