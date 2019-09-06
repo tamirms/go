@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi"
+
 	"github.com/stellar/go/protocols/horizon"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
 	"github.com/stellar/go/services/horizon/internal/render/problem"
@@ -273,24 +274,32 @@ func TestOfferActionsStillIngesting_Index(t *testing.T) {
 	ht.Assert.Equal(problem.StillIngesting.Status, w.Code)
 }
 func TestOfferActions_AccountIndexExperimentalIngestion(t *testing.T) {
-	ht := StartHTTPTest(t, "base")
-	ht.App.config.EnableExperimentalIngestion = true
-	defer ht.Finish()
-	q := &history.Q{ht.HorizonSession()}
+	tt := test.Start(t)
+	defer tt.Finish()
 
-	ht.Assert.NoError(q.UpdateLastLedgerExpIngest(3))
-	ht.Assert.NoError(q.UpsertOffer(eurOffer, 3))
-	ht.Assert.NoError(q.UpsertOffer(twoEurOffer, 3))
-	ht.Assert.NoError(q.UpsertOffer(usdOffer, 3))
+	test.ResetHorizonDB(t, tt.HorizonDB)
+	q := &history.Q{tt.HorizonSession()}
 
-	w := ht.Get(fmt.Sprintf("/accounts/%s/offers", issuer.Address()))
+	tt.Assert.NoError(q.UpdateLastLedgerExpIngest(3))
+	tt.Assert.NoError(q.UpsertOffer(eurOffer, 3))
+	tt.Assert.NoError(q.UpsertOffer(twoEurOffer, 3))
+	tt.Assert.NoError(q.UpsertOffer(usdOffer, 3))
 
-	if ht.Assert.Equal(http.StatusOK, w.Code) {
-		ht.Assert.PageOf(2, w.Body)
+	handler := GetAccountOffersHandler{
+		historyQ:      q,
+		streamHandler: StreamHandler{},
+	}
+	client := accountOffersClient(tt, handler)
+
+	w := client.Get(fmt.Sprintf("/accounts/%s/offers", issuer.Address()))
+
+	if tt.Assert.Equal(http.StatusOK, w.Code) {
 		var records []horizon.Offer
-		ht.UnmarshalPage(w.Body, &records)
+		tt.UnmarshalPage(w.Body, &records)
+
+		tt.Assert.Len(records, 2)
 		for _, record := range records {
-			ht.Assert.Equal(issuer.Address(), record.Seller)
+			tt.Assert.Equal(issuer.Address(), record.Seller)
 		}
 	}
 }
@@ -342,6 +351,7 @@ func (s *streamTest) wait() {
 
 func TestOfferActions_AccountSSEExperimentalIngestion(t *testing.T) {
 	tt := test.Start(t)
+	defer tt.Finish()
 	test.ResetHorizonDB(t, tt.HorizonDB)
 
 	q := &history.Q{tt.HorizonSession()}
