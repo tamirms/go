@@ -178,19 +178,6 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 			r.Get("/operations", OperationIndexAction{}.Handle)
 			r.Get("/payments", OperationIndexAction{OnlyPayments: true}.Handle)
 			r.Get("/effects", EffectIndexAction{}.Handle)
-
-			// r.Method(
-			// 	http.MethodGet,
-			// 	"/offers",
-			// 	experimentalIngestionOrFallback(
-			// 		restOrStream(
-			// 			http.HandlerFunc(offersHandler.getOffers),
-			// 			http.HandlerFunc(offersHandler.streamOffers),
-			// 		),
-			// 		http.HandlerFunc(OffersByAccountAction{}.Handle),
-			// 	),
-			// )
-
 			r.Get("/trades", TradeIndexAction{}.Handle)
 			r.Get("/data/{key}", DataShowAction{}.Handle)
 		})
