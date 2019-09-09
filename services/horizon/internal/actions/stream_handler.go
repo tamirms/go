@@ -10,27 +10,35 @@ import (
 	"github.com/stellar/throttled"
 )
 
+// StreamHandler represents a stream handling action
 type StreamHandler struct {
 	RateLimiter  *throttled.HTTPRateLimiter
 	LedgerSource LedgerSource
 }
 
+// LedgerSource exposes two helpers methods to help you find out the current
+// ledger and yield every time there is a new ledger.
 type LedgerSource interface {
 	CurrentLedger() uint32
 	NextLedger(currentSequence uint32) chan uint32
 }
 
+// CurrentStateFunc wraps a functions which returns the current ledger.State
 type CurrentStateFunc func() ledger.State
 
+// HistoryDBLedgerSource utility struct to pass the SSE update frequency and a
+// function to get the current ledger state.
 type HistoryDBLedgerSource struct {
 	SSEUpdateFrequency time.Duration
 	CurrentState       CurrentStateFunc
 }
 
+// CurrentLedger returns the current ledger.
 func (source HistoryDBLedgerSource) CurrentLedger() uint32 {
 	return source.CurrentState().ExpHistoryLatest
 }
 
+// NextLedger returns a channel which yields every time there is a new ledger.
 func (source HistoryDBLedgerSource) NextLedger(currentSequence uint32) chan uint32 {
 	// Make sure this is buffered channel of size 1. Otherwise, the go routine below
 	// will never return if `newLedgers` channel is not read. From Effective Go:
@@ -53,8 +61,12 @@ func (source HistoryDBLedgerSource) NextLedger(currentSequence uint32) chan uint
 	return newLedgers
 }
 
+// GenerateEventsFunc generates a slice of sse.Event which are sent via
+// streaming.
 type GenerateEventsFunc func() ([]sse.Event, error)
 
+// ServeStream handles a SSE requests, sending data every time there is a new
+// ledger.
 func (handler StreamHandler) ServeStream(
 	w http.ResponseWriter,
 	r *http.Request,
