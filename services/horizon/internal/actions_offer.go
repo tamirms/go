@@ -224,13 +224,8 @@ func (handler GetAccountOffersHandler) GetOffers(w http.ResponseWriter, r *http.
 		return
 	}
 
-	records, err := handler.historyQ.GetOffers(query)
-	if err != nil {
-		problem.Render(ctx, w, err)
-		return
-	}
+	offers, err := loadOffersQuery(ctx, handler.historyQ, query)
 
-	offers, err := buildOffersResponse(ctx, handler.historyQ, records)
 	if err != nil {
 		problem.Render(ctx, w, err)
 		return
@@ -257,11 +252,7 @@ func (handler GetAccountOffersHandler) StreamOffers(w http.ResponseWriter, r *ht
 		r,
 		int(query.PageQuery.Limit),
 		func() ([]sse.Event, error) {
-			records, err := handler.historyQ.GetOffers(query)
-			if err != nil {
-				return nil, err
-			}
-			offers, err := buildOffersResponse(ctx, handler.historyQ, records)
+			offers, err := loadOffersQuery(ctx, handler.historyQ, query)
 			if err != nil {
 				return nil, err
 			}
@@ -278,6 +269,18 @@ func (handler GetAccountOffersHandler) StreamOffers(w http.ResponseWriter, r *ht
 			return events, nil
 		},
 	)
+}
+
+func loadOffersQuery(ctx context.Context, historyQ *history.Q, query history.OffersQuery) ([]horizon.Offer, error) {
+	records, err := historyQ.GetOffers(query)
+
+	if err != nil {
+		return []horizon.Offer{}, err
+	}
+
+	offers, err := buildOffersResponse(ctx, historyQ, records)
+
+	return offers, err
 }
 
 func buildOffersResponse(ctx context.Context, historyQ *history.Q, records []history.Offer) ([]horizon.Offer, error) {
