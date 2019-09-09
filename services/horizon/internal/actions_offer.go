@@ -174,7 +174,7 @@ func (handler GetOffersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	offers, err := buildOffersResponse(ctx, handler.historyQ, &records)
+	offers, err := buildOffersResponse(ctx, handler.historyQ, records)
 	if err != nil {
 		problem.Render(ctx, w, err)
 		return
@@ -232,7 +232,7 @@ func (handler GetAccountOffersHandler) getOffers(w http.ResponseWriter, r *http.
 		return
 	}
 
-	offers, err := buildOffersResponse(ctx, handler.historyQ, &records)
+	offers, err := buildOffersResponse(ctx, handler.historyQ, records)
 	if err != nil {
 		problem.Render(ctx, w, err)
 		return
@@ -261,7 +261,7 @@ func (handler GetAccountOffersHandler) streamOffers(w http.ResponseWriter, r *ht
 			if err != nil {
 				return nil, err
 			}
-			offers, err := buildOffersResponse(ctx, handler.historyQ, &records)
+			offers, err := buildOffersResponse(ctx, handler.historyQ, records)
 			if err != nil {
 				return nil, err
 			}
@@ -280,9 +280,9 @@ func (handler GetAccountOffersHandler) streamOffers(w http.ResponseWriter, r *ht
 	)
 }
 
-func buildOffersResponse(ctx context.Context, historyQ *history.Q, records *[]history.Offer) ([]horizon.Offer, error) {
+func buildOffersResponse(ctx context.Context, historyQ *history.Q, records []history.Offer) ([]horizon.Offer, error) {
 	ledgerCache := history.LedgerCache{}
-	for _, record := range *records {
+	for _, record := range records {
 		ledgerCache.Queue(int32(record.LastModifiedLedger))
 	}
 
@@ -293,7 +293,7 @@ func buildOffersResponse(ctx context.Context, historyQ *history.Q, records *[]hi
 	}
 
 	var offers []horizon.Offer
-	for _, record := range *records {
+	for _, record := range records {
 		var offerResponse horizon.Offer
 
 		ledger, found := ledgerCache.Records[int32(record.LastModifiedLedger)]
