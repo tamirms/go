@@ -195,19 +195,15 @@ type GetAccountOffersHandler struct {
 	streamHandler StreamHandler
 }
 
-func (handler GetAccountOffersHandler) parseOffersQuery(w http.ResponseWriter, r *http.Request) (history.OffersQuery, bool) {
-	ctx := r.Context()
-
+func (handler GetAccountOffersHandler) parseOffersQuery(w http.ResponseWriter, r *http.Request) (history.OffersQuery, error) {
 	pq, err := actions.GetPageQuery(r)
 	if err != nil {
-		problem.Render(ctx, w, err)
-		return history.OffersQuery{}, false
+		return history.OffersQuery{}, err
 	}
 
 	seller, err := actions.GetString(r, "account_id")
 	if err != nil {
-		problem.Render(ctx, w, err)
-		return history.OffersQuery{}, false
+		return history.OffersQuery{}, err
 	}
 
 	query := history.OffersQuery{
@@ -215,17 +211,19 @@ func (handler GetAccountOffersHandler) parseOffersQuery(w http.ResponseWriter, r
 		SellerID:  seller,
 	}
 
-	return query, true
+	return query, nil
 }
 
 // GetOffers loads and renders an account's offers page.
 func (handler GetAccountOffersHandler) GetOffers(w http.ResponseWriter, r *http.Request) {
-	query, valid := handler.parseOffersQuery(w, r)
-	if !valid {
+	ctx := r.Context()
+	query, err := handler.parseOffersQuery(w, r)
+
+	if err != nil {
+		problem.Render(ctx, w, err)
 		return
 	}
 
-	ctx := r.Context()
 	records, err := handler.historyQ.GetOffers(query)
 	if err != nil {
 		problem.Render(ctx, w, err)
@@ -247,11 +245,12 @@ func (handler GetAccountOffersHandler) GetOffers(w http.ResponseWriter, r *http.
 
 // StreamOffers loads and renders an account's offers via SSE.
 func (handler GetAccountOffersHandler) StreamOffers(w http.ResponseWriter, r *http.Request) {
-	query, valid := handler.parseOffersQuery(w, r)
-	if !valid {
+	ctx := r.Context()
+	query, err := handler.parseOffersQuery(w, r)
+	if err != nil {
+		problem.Render(ctx, w, err)
 		return
 	}
-	ctx := r.Context()
 
 	handler.streamHandler.ServeStream(
 		w,
