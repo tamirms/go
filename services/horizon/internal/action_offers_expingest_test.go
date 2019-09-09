@@ -341,7 +341,7 @@ func TestOfferActions_AccountSSEExperimentalIngestion(t *testing.T) {
 	otherIncludedEUROffer := eurOffer
 	otherIncludedEUROffer.OfferId = 12
 
-	st := test.NewStreamTest(
+	st := actions.NewStreamTest(
 		client,
 		fmt.Sprintf("/accounts/%s/offers", issuer.Address()),
 		ledgerSource,
@@ -381,7 +381,7 @@ func TestOfferActions_AccountSSEExperimentalIngestion(t *testing.T) {
 	ledgerSource.AddLedger(6)
 	st.Wait()
 
-	st = test.NewStreamTest(
+	st = actions.NewStreamTest(
 		client,
 		fmt.Sprintf("/accounts/%s/offers?cursor=now", issuer.Address()),
 		ledgerSource,
