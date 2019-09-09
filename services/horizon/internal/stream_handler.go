@@ -131,6 +131,15 @@ func (source *TestingLedgerSource) AddLedger(nextSequence uint32) {
 	source.newLedgers <- nextSequence
 }
 
+func (source *TestingLedgerSource) TryAddLedger(nextSequence uint32, timeout time.Duration) bool {
+	select {
+	case source.newLedgers <- nextSequence:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
 func (source *TestingLedgerSource) NextLedger(currentSequence uint32) chan uint32 {
 	return source.newLedgers
 }

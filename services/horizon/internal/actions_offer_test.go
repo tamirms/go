@@ -312,16 +312,22 @@ func accountOffersClient(tt *test.T, handler GetAccountOffersHandler) test.Reque
 }
 
 type streamTest struct {
-	client test.RequestHelper
-	uri    string
-	cancel context.CancelFunc
-	done   chan bool
+	client       test.RequestHelper
+	uri          string
+	ledgerSource *TestingLedgerSource
+	cancel       context.CancelFunc
+	done         chan bool
 }
 
-func newStreamTest(client test.RequestHelper, uri string) *streamTest {
+func newStreamTest(
+	client test.RequestHelper,
+	uri string,
+	ledgerSource *TestingLedgerSource,
+) *streamTest {
 	return &streamTest{
-		client: client,
-		uri:    uri,
+		client:       client,
+		uri:          uri,
+		ledgerSource: ledgerSource,
 	}
 }
 
@@ -345,6 +351,9 @@ func (s *streamTest) run(checkResponse func(w *httptest.ResponseRecorder)) {
 }
 
 func (s *streamTest) wait() {
+	// first send a ledger to the stream handler so we can ensure that at least one
+	// iteration of the stream loop has been executed
+	s.ledgerSource.TryAddLedger(0, 2*time.Second)
 	s.cancel()
 	<-s.done
 }
@@ -381,7 +390,11 @@ func TestOfferActions_AccountSSEExperimentalIngestion(t *testing.T) {
 	otherIncludedEUROffer := eurOffer
 	otherIncludedEUROffer.OfferId = 12
 
-	st := newStreamTest(client, fmt.Sprintf("/accounts/%s/offers", issuer.Address()))
+	st := newStreamTest(
+		client,
+		fmt.Sprintf("/accounts/%s/offers", issuer.Address()),
+		ledgerSource,
+	)
 	st.run(func(w *httptest.ResponseRecorder) {
 		var offers []horizon.Offer
 		for _, line := range strings.Split(w.Body.String(), "\n") {
@@ -415,10 +428,14 @@ func TestOfferActions_AccountSSEExperimentalIngestion(t *testing.T) {
 	tt.Assert.NoError(q.UpsertOffer(otherIncludedEUROffer, 5))
 
 	ledgerSource.AddLedger(6)
-
 	st.wait()
 
-	st = newStreamTest(client, fmt.Sprintf("/accounts/%s/offers?cursor=now", issuer.Address()))
+	st = newStreamTest(
+		client,
+		fmt.Sprintf("/accounts/%s/offers?cursor=now", issuer.Address()),
+		ledgerSource,
+	)
+
 	st.run(func(w *httptest.ResponseRecorder) {
 		var offers []horizon.Offer
 		for _, line := range strings.Split(w.Body.String(), "\n") {
@@ -433,6 +450,7 @@ func TestOfferActions_AccountSSEExperimentalIngestion(t *testing.T) {
 
 		tt.Assert.Len(offers, 0)
 	})
+
 	st.wait()
 }
 
