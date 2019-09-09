@@ -213,8 +213,6 @@ func (handler GetAccountOffersHandler) parseOffersQuery(w http.ResponseWriter, r
 	query := history.OffersQuery{
 		PageQuery: pq,
 		SellerID:  seller,
-		Selling:   nil,
-		Buying:    nil,
 	}
 
 	return query, true
