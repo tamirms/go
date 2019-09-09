@@ -186,7 +186,7 @@ func (handler GetOffersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 // `/accounts/{account_id}/offers` endpoint when using experimental ingestion.
 type GetAccountOffersHandler struct {
 	historyQ      *history.Q
-	streamHandler StreamHandler
+	streamHandler actions.StreamHandler
 }
 
 func (handler GetAccountOffersHandler) parseOffersQuery(w http.ResponseWriter, r *http.Request) (history.OffersQuery, error) {

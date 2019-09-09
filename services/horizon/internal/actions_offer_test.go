@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi"
 
 	"github.com/stellar/go/protocols/horizon"
+	"github.com/stellar/go/services/horizon/internal/actions"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
 	"github.com/stellar/go/services/horizon/internal/render/problem"
 	"github.com/stellar/go/services/horizon/internal/render/sse"
@@ -287,7 +288,7 @@ func TestOfferActions_AccountIndexExperimentalIngestion(t *testing.T) {
 
 	handler := GetAccountOffersHandler{
 		historyQ:      q,
-		streamHandler: StreamHandler{},
+		streamHandler: actions.StreamHandler{},
 	}
 	client := accountOffersClient(tt, handler)
 
@@ -314,7 +315,7 @@ func accountOffersClient(tt *test.T, handler GetAccountOffersHandler) test.Reque
 type streamTest struct {
 	client       test.RequestHelper
 	uri          string
-	ledgerSource *TestingLedgerSource
+	ledgerSource *actions.TestingLedgerSource
 	cancel       context.CancelFunc
 	done         chan bool
 }
@@ -322,7 +323,7 @@ type streamTest struct {
 func newStreamTest(
 	client test.RequestHelper,
 	uri string,
-	ledgerSource *TestingLedgerSource,
+	ledgerSource *actions.TestingLedgerSource,
 ) *streamTest {
 	return &streamTest{
 		client:       client,
@@ -365,11 +366,11 @@ func TestOfferActions_AccountSSEExperimentalIngestion(t *testing.T) {
 
 	q := &history.Q{tt.HorizonSession()}
 
-	ledgerSource := NewTestingLedgerSource(3)
+	ledgerSource := actions.NewTestingLedgerSource(3)
 
 	handler := GetAccountOffersHandler{
 		historyQ: q,
-		streamHandler: StreamHandler{
+		streamHandler: actions.StreamHandler{
 			RateLimiter:  maybeInitWebRateLimiter(NewTestConfig().RateQuota),
 			LedgerSource: ledgerSource,
 		},

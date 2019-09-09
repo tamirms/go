@@ -14,6 +14,7 @@ import (
 	"github.com/rs/cors"
 	"github.com/sebest/xff"
 
+	"github.com/stellar/go/services/horizon/internal/actions"
 	"github.com/stellar/go/services/horizon/internal/db2"
 	"github.com/stellar/go/services/horizon/internal/db2/core"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
@@ -184,9 +185,9 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 	})
 	offersHandler := GetAccountOffersHandler{
 		historyQ: w.historyQ,
-		streamHandler: StreamHandler{
+		streamHandler: actions.StreamHandler{
 			RateLimiter: w.rateLimiter,
-			LedgerSource: HistoryDBLedgerSource{
+			LedgerSource: actions.HistoryDBLedgerSource{
 				SSEUpdateFrequency: w.sseUpdateFrequency,
 				CurrentState:       ledger.CurrentState,
 			},
