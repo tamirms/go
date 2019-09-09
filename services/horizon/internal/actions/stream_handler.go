@@ -126,11 +126,14 @@ func (handler StreamHandler) ServeStream(
 	}
 }
 
+// TestingLedgerSource is helper struct which implements the LedgerSource
+// interface.
 type TestingLedgerSource struct {
 	currentLedger uint32
 	newLedgers    chan uint32
 }
 
+// NewTestingLedgerSource returns a TestingLedgerSource.
 func NewTestingLedgerSource(currentLedger uint32) *TestingLedgerSource {
 	return &TestingLedgerSource{
 		currentLedger: currentLedger,
@@ -138,14 +141,18 @@ func NewTestingLedgerSource(currentLedger uint32) *TestingLedgerSource {
 	}
 }
 
+// CurrentLedger returns the current ledger.
 func (source *TestingLedgerSource) CurrentLedger() uint32 {
 	return source.currentLedger
 }
 
+// AddLedger adds a new sequence to the newLedgers channel, yielding a new value.
 func (source *TestingLedgerSource) AddLedger(nextSequence uint32) {
 	source.newLedgers <- nextSequence
 }
 
+// TryAddLedger sends a new message to the newLedgers channel, forcing the
+// execution of the stream loop.
 func (source *TestingLedgerSource) TryAddLedger(nextSequence uint32, timeout time.Duration) bool {
 	select {
 	case source.newLedgers <- nextSequence:
@@ -155,6 +162,7 @@ func (source *TestingLedgerSource) TryAddLedger(nextSequence uint32, timeout tim
 	}
 }
 
+// NextLedger returns a channel which yields every time there is a new ledger.
 func (source *TestingLedgerSource) NextLedger(currentSequence uint32) chan uint32 {
 	return source.newLedgers
 }
@@ -181,6 +189,8 @@ func NewStreamTest(
 	}
 }
 
+// Run executes an SSE related test, letting you simulate ledger closings via
+// AddLedger.
 func (s *StreamTest) Run(checkResponse func(w *httptest.ResponseRecorder)) {
 	var ctx context.Context
 	ctx, s.cancel = context.WithCancel(context.Background())
@@ -200,6 +210,7 @@ func (s *StreamTest) Run(checkResponse func(w *httptest.ResponseRecorder)) {
 	}()
 }
 
+// Wait blocks testing until the stream test has finished running.
 func (s *StreamTest) Wait() {
 	// first send a ledger to the stream handler so we can ensure that at least one
 	// iteration of the stream loop has been executed
