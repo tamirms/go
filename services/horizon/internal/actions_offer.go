@@ -188,7 +188,8 @@ func (handler GetOffersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 
 }
 
-// GetAccountOffersHandler is the http handler for the /accounts/{account_id}/offers endpoint when using experimental ingestion.
+// GetAccountOffersHandler is the http handler for the
+// `/accounts/{account_id}/offers` endpoint when using experimental ingestion.
 type GetAccountOffersHandler struct {
 	historyQ      *history.Q
 	streamHandler StreamHandler
@@ -219,7 +220,8 @@ func (handler GetAccountOffersHandler) parseOffersQuery(w http.ResponseWriter, r
 	return query, true
 }
 
-func (handler GetAccountOffersHandler) getOffers(w http.ResponseWriter, r *http.Request) {
+// GetOffers loads and renders an account's offers page.
+func (handler GetAccountOffersHandler) GetOffers(w http.ResponseWriter, r *http.Request) {
 	query, valid := handler.parseOffersQuery(w, r)
 	if !valid {
 		return
@@ -245,7 +247,8 @@ func (handler GetAccountOffersHandler) getOffers(w http.ResponseWriter, r *http.
 	)
 }
 
-func (handler GetAccountOffersHandler) streamOffers(w http.ResponseWriter, r *http.Request) {
+// StreamOffers loads and renders an account's offers via SSE.
+func (handler GetAccountOffersHandler) StreamOffers(w http.ResponseWriter, r *http.Request) {
 	query, valid := handler.parseOffersQuery(w, r)
 	if !valid {
 		return

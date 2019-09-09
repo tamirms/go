@@ -136,8 +136,8 @@ func installAccountOfferRoute(
 	var handler http.Handler
 	if enableExperimentalIngestion {
 		handler = restOrStream(
-			http.HandlerFunc(offersHandler.getOffers),
-			http.HandlerFunc(offersHandler.streamOffers),
+			http.HandlerFunc(offersHandler.GetOffers),
+			http.HandlerFunc(offersHandler.StreamOffers),
 		)
 	} else {
 		handler = http.HandlerFunc(OffersByAccountAction{}.Handle)
