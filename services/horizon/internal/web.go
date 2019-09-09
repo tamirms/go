@@ -129,7 +129,7 @@ func installPathFindingRoutes(
 }
 
 func installAccountOfferRoute(
-	offersHandler GetAccountOffersHandler,
+	offersHandler actions.GetAccountOffersHandler,
 	enableExperimentalIngestion bool,
 	r *chi.Mux,
 ) {
@@ -183,9 +183,9 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 			r.Get("/data/{key}", DataShowAction{}.Handle)
 		})
 	})
-	offersHandler := GetAccountOffersHandler{
-		historyQ: w.historyQ,
-		streamHandler: actions.StreamHandler{
+	offersHandler := actions.GetAccountOffersHandler{
+		HistoryQ: w.historyQ,
+		StreamHandler: actions.StreamHandler{
 			RateLimiter: w.rateLimiter,
 			LedgerSource: actions.HistoryDBLedgerSource{
 				SSEUpdateFrequency: w.sseUpdateFrequency,
@@ -225,7 +225,7 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 
 	r.Route("/offers", func(r chi.Router) {
 		r.With(acceptOnlyJSON, requiresExperimentalIngestion).
-			Method(http.MethodGet, "/", GetOffersHandler{historyQ: w.historyQ})
+			Method(http.MethodGet, "/", actions.GetOffersHandler{HistoryQ: w.historyQ})
 		r.With(acceptOnlyJSON, requiresExperimentalIngestion).
 			Get("/{id}", getOfferResource)
 		r.Get("/{offer_id}/trades", TradeIndexAction{}.Handle)

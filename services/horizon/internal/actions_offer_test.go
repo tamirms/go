@@ -286,9 +286,9 @@ func TestOfferActions_AccountIndexExperimentalIngestion(t *testing.T) {
 	tt.Assert.NoError(q.UpsertOffer(twoEurOffer, 3))
 	tt.Assert.NoError(q.UpsertOffer(usdOffer, 3))
 
-	handler := GetAccountOffersHandler{
-		historyQ:      q,
-		streamHandler: actions.StreamHandler{},
+	handler := actions.GetAccountOffersHandler{
+		HistoryQ:      q,
+		StreamHandler: actions.StreamHandler{},
 	}
 	client := accountOffersClient(tt, handler)
 
@@ -305,7 +305,7 @@ func TestOfferActions_AccountIndexExperimentalIngestion(t *testing.T) {
 	}
 }
 
-func accountOffersClient(tt *test.T, handler GetAccountOffersHandler) test.RequestHelper {
+func accountOffersClient(tt *test.T, handler actions.GetAccountOffersHandler) test.RequestHelper {
 	router := chi.NewRouter()
 
 	installAccountOfferRoute(handler, true, router)
@@ -368,9 +368,9 @@ func TestOfferActions_AccountSSEExperimentalIngestion(t *testing.T) {
 
 	ledgerSource := actions.NewTestingLedgerSource(3)
 
-	handler := GetAccountOffersHandler{
-		historyQ: q,
-		streamHandler: actions.StreamHandler{
+	handler := actions.GetAccountOffersHandler{
+		HistoryQ: q,
+		StreamHandler: actions.StreamHandler{
 			RateLimiter:  maybeInitWebRateLimiter(NewTestConfig().RateQuota),
 			LedgerSource: ledgerSource,
 		},
