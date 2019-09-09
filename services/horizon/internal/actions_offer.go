@@ -167,14 +167,8 @@ func (handler GetOffersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		Buying:    buying,
 	}
 
-	records, err := handler.historyQ.GetOffers(query)
+	offers, err := loadOffersQuery(ctx, handler.historyQ, query)
 
-	if err != nil {
-		problem.Render(ctx, w, err)
-		return
-	}
-
-	offers, err := buildOffersResponse(ctx, handler.historyQ, records)
 	if err != nil {
 		problem.Render(ctx, w, err)
 		return
