@@ -130,16 +130,17 @@ func installPathFindingRoutes(
 
 func installAccountOfferRoute(
 	offersHandler actions.GetAccountOffersHandler,
+	streamHandler actions.StreamHandler,
 	enableExperimentalIngestion bool,
 	r *chi.Mux,
 ) {
 	path := "/accounts/{account_id}/offers"
 	var handler http.Handler
 	if enableExperimentalIngestion {
-		handler = restOrStream(
-			http.HandlerFunc(offersHandler.GetOffers),
-			http.HandlerFunc(offersHandler.StreamOffers),
-		)
+		handler = actionHandler{
+			pageAction:    offersHandler,
+			streamHandler: streamHandler,
+		}
 	} else {
 		handler = http.HandlerFunc(OffersByAccountAction{}.Handle)
 	}
@@ -185,15 +186,17 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 	})
 	offersHandler := actions.GetAccountOffersHandler{
 		HistoryQ: w.historyQ,
-		StreamHandler: actions.StreamHandler{
-			RateLimiter: w.rateLimiter,
-			LedgerSource: actions.HistoryDBLedgerSource{
-				SSEUpdateFrequency: w.sseUpdateFrequency,
-				CurrentState:       ledger.CurrentState,
-			},
+	}
+
+	streamHandler := actions.StreamHandler{
+		RateLimiter: w.rateLimiter,
+		LedgerSource: actions.HistoryDBLedgerSource{
+			SSEUpdateFrequency: w.sseUpdateFrequency,
+			CurrentState:       ledger.CurrentState,
 		},
 	}
-	installAccountOfferRoute(offersHandler, config.EnableExperimentalIngestion, r)
+
+	installAccountOfferRoute(offersHandler, streamHandler, config.EnableExperimentalIngestion, r)
 
 	// transaction history actions
 	r.Route("/transactions", func(r chi.Router) {

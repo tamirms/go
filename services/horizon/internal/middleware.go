@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
+
 	"github.com/stellar/go/services/horizon/internal/errors"
 	"github.com/stellar/go/services/horizon/internal/hchi"
 	"github.com/stellar/go/services/horizon/internal/httpx"
@@ -202,22 +203,6 @@ func acceptOnlyJSON(h http.Handler) http.Handler {
 		}
 
 		h.ServeHTTP(w, r)
-	})
-}
-
-func restOrStream(restHandler http.Handler, streamHandler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-		switch render.Negotiate(r) {
-		case render.MimeHal, render.MimeJSON:
-			restHandler.ServeHTTP(w, r)
-			return
-		case render.MimeEventStream:
-			streamHandler.ServeHTTP(w, r)
-			return
-		}
-
-		problem.Render(r.Context(), w, hProblem.NotAcceptable)
 	})
 }
 

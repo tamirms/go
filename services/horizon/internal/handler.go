@@ -20,6 +20,7 @@ import (
 	"github.com/stellar/go/strkey"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/render/hal"
+	"github.com/stellar/go/support/render/httpjson"
 	"github.com/stellar/go/support/render/problem"
 )
 
@@ -400,4 +401,74 @@ func validateCursorWithinHistory(pq db2.PageQuery) error {
 	}
 
 	return nil
+}
+
+type baseAction interface {
+	Streamable() bool
+}
+
+type pageAction interface {
+	baseAction
+	GetObject(r *http.Request) (hal.Page, error)
+}
+
+type actionHandler struct {
+	pageAction    pageAction
+	streamHandler actions.StreamHandler
+}
+
+func (handler actionHandler) renderPage(w http.ResponseWriter, r *http.Request) {
+	page, err := handler.pageAction.GetObject(r)
+
+	if err != nil {
+		problem.Render(r.Context(), w, err)
+		return
+	}
+
+	httpjson.Render(
+		w,
+		page,
+		httpjson.HALJSON,
+	)
+}
+
+func (handler actionHandler) renderStream(w http.ResponseWriter, r *http.Request) {
+	handler.streamHandler.ServeStream(
+		w,
+		r,
+		int(10), // TODO: figure this out/refactor
+		func() ([]sse.Event, error) {
+			page, err := handler.pageAction.GetObject(r)
+			if err != nil {
+				return nil, err
+			}
+
+			var events []sse.Event
+			for _, offer := range page.Embedded.Records {
+				events = append(events, sse.Event{ID: offer.PagingToken(), Data: offer})
+			}
+
+			// TODO: how to update cursor?
+			// if len(events) > 0 {
+			// 	query.PageQuery.Cursor = events[len(events)-1].ID
+			// }
+
+			return events, nil
+		},
+	)
+}
+
+func (handler actionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch render.Negotiate(r) {
+	case render.MimeHal, render.MimeJSON:
+		handler.renderPage(w, r)
+		return
+	case render.MimeEventStream:
+		if handler.pageAction.Streamable() {
+			handler.renderStream(w, r)
+			return
+		}
+	}
+
+	problem.Render(r.Context(), w, hProblem.NotAcceptable)
 }

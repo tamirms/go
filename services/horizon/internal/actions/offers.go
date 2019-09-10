@@ -7,7 +7,6 @@ import (
 	"github.com/stellar/go/protocols/horizon"
 	"github.com/stellar/go/services/horizon/internal/db2"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
-	"github.com/stellar/go/services/horizon/internal/render/sse"
 	"github.com/stellar/go/services/horizon/internal/resourceadapter"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/render/hal"
@@ -77,11 +76,15 @@ func (handler GetOffersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 // GetAccountOffersHandler is the http handler for the
 // `/accounts/{account_id}/offers` endpoint when using experimental ingestion.
 type GetAccountOffersHandler struct {
-	HistoryQ      *history.Q
-	StreamHandler StreamHandler
+	HistoryQ *history.Q
 }
 
-func (handler GetAccountOffersHandler) parseOffersQuery(w http.ResponseWriter, r *http.Request) (history.OffersQuery, error) {
+// Streamable signals if this action supports streaming or not.
+func (handler GetAccountOffersHandler) Streamable() bool {
+	return true
+}
+
+func (handler GetAccountOffersHandler) parseOffersQuery(r *http.Request) (history.OffersQuery, error) {
 	pq, err := GetPageQuery(r)
 	if err != nil {
 		return history.OffersQuery{}, err
@@ -100,61 +103,22 @@ func (handler GetAccountOffersHandler) parseOffersQuery(w http.ResponseWriter, r
 	return query, nil
 }
 
-// GetOffers loads and renders an account's offers page.
-func (handler GetAccountOffersHandler) GetOffers(w http.ResponseWriter, r *http.Request) {
+// GetObject get objects for requests.
+func (handler GetAccountOffersHandler) GetObject(r *http.Request) (hal.Page, error) {
 	ctx := r.Context()
-	query, err := handler.parseOffersQuery(w, r)
+	query, err := handler.parseOffersQuery(r)
 
 	if err != nil {
-		problem.Render(ctx, w, err)
-		return
+		return hal.Page{}, err
 	}
 
 	offers, err := loadOffersQuery(ctx, handler.HistoryQ, query)
 
 	if err != nil {
-		problem.Render(ctx, w, err)
-		return
+		return hal.Page{}, err
 	}
 
-	httpjson.Render(
-		w,
-		buildOffersPage(ctx, query.PageQuery, offers),
-		httpjson.HALJSON,
-	)
-}
-
-// StreamOffers loads and renders an account's offers via SSE.
-func (handler GetAccountOffersHandler) StreamOffers(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	query, err := handler.parseOffersQuery(w, r)
-	if err != nil {
-		problem.Render(ctx, w, err)
-		return
-	}
-
-	handler.StreamHandler.ServeStream(
-		w,
-		r,
-		int(query.PageQuery.Limit),
-		func() ([]sse.Event, error) {
-			offers, err := loadOffersQuery(ctx, handler.HistoryQ, query)
-			if err != nil {
-				return nil, err
-			}
-
-			var events []sse.Event
-			for _, offer := range offers {
-				events = append(events, sse.Event{ID: offer.PagingToken(), Data: offer})
-			}
-
-			if len(events) > 0 {
-				query.PageQuery.Cursor = events[len(events)-1].ID
-			}
-
-			return events, nil
-		},
-	)
+	return buildOffersPage(ctx, query.PageQuery, offers), nil
 }
 
 func loadOffersQuery(ctx context.Context, historyQ *history.Q, query history.OffersQuery) ([]horizon.Offer, error) {
