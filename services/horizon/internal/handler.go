@@ -433,10 +433,18 @@ func (handler actionHandler) renderPage(w http.ResponseWriter, r *http.Request) 
 }
 
 func (handler actionHandler) renderStream(w http.ResponseWriter, r *http.Request) {
+	// Use pq to get SSE limit.
+	pq, err := actions.GetPageQuery(r)
+
+	if err != nil {
+		problem.Render(r.Context(), w, err)
+		return
+	}
+
 	handler.streamHandler.ServeStream(
 		w,
 		r,
-		int(10), // TODO: figure this out/refactor
+		int(pq.Limit),
 		func() ([]sse.Event, error) {
 			page, err := handler.pageAction.GetObject(r)
 			if err != nil {
@@ -448,10 +456,13 @@ func (handler actionHandler) renderStream(w http.ResponseWriter, r *http.Request
 				events = append(events, sse.Event{ID: offer.PagingToken(), Data: offer})
 			}
 
-			// TODO: how to update cursor?
-			// if len(events) > 0 {
-			// 	query.PageQuery.Cursor = events[len(events)-1].ID
-			// }
+			if len(events) > 0 {
+				// Update the cursor for the next call to GetObject, GetCursor
+				// will use Last-Event-ID if present. This feels kind of hacky,
+				// but otherwise, we'll have to edit r.URL, which is also a
+				// hack.
+				r.Header.Set("Last-Event-ID", events[len(events)-1].ID)
+			}
 
 			return events, nil
 		},
