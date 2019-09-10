@@ -228,7 +228,15 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 
 	r.Route("/offers", func(r chi.Router) {
 		r.With(acceptOnlyJSON, requiresExperimentalIngestion).
-			Method(http.MethodGet, "/", actions.GetOffersHandler{HistoryQ: w.historyQ})
+			Method(
+				http.MethodGet,
+				"/",
+				actionHandler{
+					pageAction: actions.GetOffersHandler{
+						HistoryQ: w.historyQ,
+					},
+				},
+			)
 		r.With(acceptOnlyJSON, requiresExperimentalIngestion).
 			Get("/{id}", getOfferResource)
 		r.Get("/{offer_id}/trades", TradeIndexAction{}.Handle)

@@ -10,8 +10,6 @@ import (
 	"github.com/stellar/go/services/horizon/internal/resourceadapter"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/render/hal"
-	"github.com/stellar/go/support/render/httpjson"
-	"github.com/stellar/go/support/render/problem"
 	"github.com/stellar/go/xdr"
 )
 
@@ -20,21 +18,24 @@ type GetOffersHandler struct {
 	HistoryQ *history.Q
 }
 
-// ServeHTTP implements the http.Handler interface
-func (handler GetOffersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// Streamable signals if this action supports streaming or not.
+func (handler GetOffersHandler) Streamable() bool {
+	return false
+}
+
+// GetObject returns an offer page.
+func (handler GetOffersHandler) GetObject(r *http.Request) (hal.Page, error) {
 	ctx := r.Context()
 	pq, err := GetPageQuery(r)
 
 	if err != nil {
-		problem.Render(ctx, w, err)
-		return
+		return hal.Page{}, err
 	}
 
 	seller, err := GetString(r, "seller")
 
 	if err != nil {
-		problem.Render(ctx, w, err)
-		return
+		return hal.Page{}, err
 	}
 
 	var selling *xdr.Asset
@@ -61,16 +62,10 @@ func (handler GetOffersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 	offers, err := loadOffersQuery(ctx, handler.HistoryQ, query)
 
 	if err != nil {
-		problem.Render(ctx, w, err)
-		return
+		return hal.Page{}, err
 	}
 
-	httpjson.Render(
-		w,
-		buildOffersPage(ctx, query.PageQuery, offers),
-		httpjson.HALJSON,
-	)
-
+	return buildOffersPage(ctx, query.PageQuery, offers), nil
 }
 
 // GetAccountOffersHandler is the http handler for the
@@ -103,7 +98,7 @@ func (handler GetAccountOffersHandler) parseOffersQuery(r *http.Request) (histor
 	return query, nil
 }
 
-// GetObject get objects for requests.
+// GetObject gets objects for requests.
 func (handler GetAccountOffersHandler) GetObject(r *http.Request) (hal.Page, error) {
 	ctx := r.Context()
 	query, err := handler.parseOffersQuery(r)
