@@ -409,7 +409,7 @@ type baseAction interface {
 
 type pageAction interface {
 	baseAction
-	GetObject(r *http.Request) (hal.Page, error)
+	GetObject(r *http.Request) ([]hal.Pageable, error)
 }
 
 type actionHandler struct {
@@ -418,7 +418,14 @@ type actionHandler struct {
 }
 
 func (handler actionHandler) renderPage(w http.ResponseWriter, r *http.Request) {
-	page, err := handler.pageAction.GetObject(r)
+	records, err := handler.pageAction.GetObject(r)
+
+	if err != nil {
+		problem.Render(r.Context(), w, err)
+		return
+	}
+
+	page, err := buildPage(r, records)
 
 	if err != nil {
 		problem.Render(r.Context(), w, err)
@@ -446,14 +453,14 @@ func (handler actionHandler) renderStream(w http.ResponseWriter, r *http.Request
 		r,
 		int(pq.Limit),
 		func() ([]sse.Event, error) {
-			page, err := handler.pageAction.GetObject(r)
+			records, err := handler.pageAction.GetObject(r)
 			if err != nil {
 				return nil, err
 			}
 
 			var events []sse.Event
-			for _, offer := range page.Embedded.Records {
-				events = append(events, sse.Event{ID: offer.PagingToken(), Data: offer})
+			for _, record := range records {
+				events = append(events, sse.Event{ID: record.PagingToken(), Data: record})
 			}
 
 			if len(events) > 0 {
@@ -482,4 +489,29 @@ func (handler actionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	problem.Render(r.Context(), w, hProblem.NotAcceptable)
+}
+
+func buildPage(r *http.Request, records []hal.Pageable) (hal.Page, error) {
+	pageQuery, err := actions.GetPageQuery(r)
+
+	if err != nil {
+		return hal.Page{}, err
+	}
+
+	ctx := r.Context()
+
+	page := hal.Page{
+		Cursor: pageQuery.Cursor,
+		Order:  pageQuery.Order,
+		Limit:  pageQuery.Limit,
+	}
+
+	for _, record := range records {
+		page.Add(record)
+	}
+
+	page.FullURL = actions.FullURL(ctx)
+	page.PopulateLinks()
+
+	return page, nil
 }

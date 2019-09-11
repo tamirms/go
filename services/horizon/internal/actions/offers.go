@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/stellar/go/protocols/horizon"
-	"github.com/stellar/go/services/horizon/internal/db2"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
 	"github.com/stellar/go/services/horizon/internal/resourceadapter"
 	"github.com/stellar/go/support/errors"
@@ -24,18 +23,18 @@ func (handler GetOffersHandler) Streamable() bool {
 }
 
 // GetObject returns an offer page.
-func (handler GetOffersHandler) GetObject(r *http.Request) (hal.Page, error) {
+func (handler GetOffersHandler) GetObject(r *http.Request) ([]hal.Pageable, error) {
 	ctx := r.Context()
 	pq, err := GetPageQuery(r)
 
 	if err != nil {
-		return hal.Page{}, err
+		return []hal.Pageable{}, err
 	}
 
 	seller, err := GetString(r, "seller")
 
 	if err != nil {
-		return hal.Page{}, err
+		return []hal.Pageable{}, err
 	}
 
 	var selling *xdr.Asset
@@ -62,10 +61,10 @@ func (handler GetOffersHandler) GetObject(r *http.Request) (hal.Page, error) {
 	offers, err := loadOffersQuery(ctx, handler.HistoryQ, query)
 
 	if err != nil {
-		return hal.Page{}, err
+		return []hal.Pageable{}, err
 	}
 
-	return buildOffersPage(ctx, query.PageQuery, offers), nil
+	return offers, nil
 }
 
 // GetAccountOffersHandler is the http handler for the
@@ -99,28 +98,28 @@ func (handler GetAccountOffersHandler) parseOffersQuery(r *http.Request) (histor
 }
 
 // GetObject gets objects for requests.
-func (handler GetAccountOffersHandler) GetObject(r *http.Request) (hal.Page, error) {
+func (handler GetAccountOffersHandler) GetObject(r *http.Request) ([]hal.Pageable, error) {
 	ctx := r.Context()
 	query, err := handler.parseOffersQuery(r)
 
 	if err != nil {
-		return hal.Page{}, err
+		return []hal.Pageable{}, err
 	}
 
 	offers, err := loadOffersQuery(ctx, handler.HistoryQ, query)
 
 	if err != nil {
-		return hal.Page{}, err
+		return []hal.Pageable{}, err
 	}
 
-	return buildOffersPage(ctx, query.PageQuery, offers), nil
+	return offers, nil
 }
 
-func loadOffersQuery(ctx context.Context, historyQ *history.Q, query history.OffersQuery) ([]horizon.Offer, error) {
+func loadOffersQuery(ctx context.Context, historyQ *history.Q, query history.OffersQuery) ([]hal.Pageable, error) {
 	records, err := historyQ.GetOffers(query)
 
 	if err != nil {
-		return []horizon.Offer{}, err
+		return []hal.Pageable{}, err
 	}
 
 	offers, err := buildOffersResponse(ctx, historyQ, records)
@@ -128,7 +127,7 @@ func loadOffersQuery(ctx context.Context, historyQ *history.Q, query history.Off
 	return offers, err
 }
 
-func buildOffersResponse(ctx context.Context, historyQ *history.Q, records []history.Offer) ([]horizon.Offer, error) {
+func buildOffersResponse(ctx context.Context, historyQ *history.Q, records []history.Offer) ([]hal.Pageable, error) {
 	ledgerCache := history.LedgerCache{}
 	for _, record := range records {
 		ledgerCache.Queue(int32(record.LastModifiedLedger))
@@ -140,7 +139,7 @@ func buildOffersResponse(ctx context.Context, historyQ *history.Q, records []his
 		return nil, errors.Wrap(err, "failed to load ledger batch")
 	}
 
-	var offers []horizon.Offer
+	var offers []hal.Pageable
 	for _, record := range records {
 		var offerResponse horizon.Offer
 
@@ -155,24 +154,4 @@ func buildOffersResponse(ctx context.Context, historyQ *history.Q, records []his
 	}
 
 	return offers, nil
-}
-
-func buildOffersPage(
-	ctx context.Context,
-	pageQuery db2.PageQuery,
-	offers []horizon.Offer,
-) hal.Page {
-	page := hal.Page{
-		Cursor: pageQuery.Cursor,
-		Order:  pageQuery.Order,
-		Limit:  pageQuery.Limit,
-	}
-
-	for _, offer := range offers {
-		page.Add(offer)
-	}
-
-	page.FullURL = FullURL(ctx)
-	page.PopulateLinks()
-	return page
 }
