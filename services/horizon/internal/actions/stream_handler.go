@@ -1,14 +1,11 @@
 package actions
 
 import (
-	"context"
 	"net/http"
-	"net/http/httptest"
 	"time"
 
 	"github.com/stellar/go/services/horizon/internal/ledger"
 	"github.com/stellar/go/services/horizon/internal/render/sse"
-	"github.com/stellar/go/services/horizon/internal/test"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/throttled"
 )
@@ -165,56 +162,4 @@ func (source *TestingLedgerSource) TryAddLedger(nextSequence uint32, timeout tim
 // NextLedger returns a channel which yields every time there is a new ledger.
 func (source *TestingLedgerSource) NextLedger(currentSequence uint32) chan uint32 {
 	return source.newLedgers
-}
-
-// StreamTest utility struct to wrap SSE related tests.
-type StreamTest struct {
-	client       test.RequestHelper
-	uri          string
-	ledgerSource *TestingLedgerSource
-	cancel       context.CancelFunc
-	done         chan bool
-}
-
-// NewStreamTest returns a StreamTest struct
-func NewStreamTest(
-	client test.RequestHelper,
-	uri string,
-	ledgerSource *TestingLedgerSource,
-) *StreamTest {
-	return &StreamTest{
-		client:       client,
-		uri:          uri,
-		ledgerSource: ledgerSource,
-	}
-}
-
-// Run executes an SSE related test, letting you simulate ledger closings via
-// AddLedger.
-func (s *StreamTest) Run(checkResponse func(w *httptest.ResponseRecorder)) {
-	var ctx context.Context
-	ctx, s.cancel = context.WithCancel(context.Background())
-	s.done = make(chan bool)
-
-	go func() {
-		w := s.client.Get(
-			s.uri,
-			test.RequestHelperStreaming,
-			func(r *http.Request) {
-				*r = *r.WithContext(ctx)
-			},
-		)
-
-		checkResponse(w)
-		s.done <- true
-	}()
-}
-
-// Wait blocks testing until the stream test has finished running.
-func (s *StreamTest) Wait() {
-	// first send a ledger to the stream handler so we can ensure that at least one
-	// iteration of the stream loop has been executed
-	s.ledgerSource.TryAddLedger(0, 2*time.Second)
-	s.cancel()
-	<-s.done
 }

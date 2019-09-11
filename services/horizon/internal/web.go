@@ -135,13 +135,15 @@ func installAccountOfferRoute(
 	r *chi.Mux,
 ) {
 	path := "/accounts/{account_id}/offers"
-	var handler http.Handler
 	if enableExperimentalIngestion {
-		handler = streamablePageHandler(offersAction, streamHandler)
+		r.With(requiresExperimentalIngestion).Method(
+			http.MethodGet,
+			path,
+			streamablePageHandler(offersAction, streamHandler),
+		)
 	} else {
-		handler = http.HandlerFunc(OffersByAccountAction{}.Handle)
+		r.Get(path, OffersByAccountAction{}.Handle)
 	}
-	r.Method(http.MethodGet, path, handler)
 }
 
 // mustInstallActions installs the routing configuration of horizon onto the

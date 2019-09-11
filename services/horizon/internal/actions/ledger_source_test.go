@@ -19,7 +19,6 @@ func Test_HistoryDBLedgerSourceCurrentLedger(t *testing.T) {
 	}
 
 	currentLedger := ledgerSource.CurrentLedger()
-
 	if currentLedger != 3 {
 		t.Errorf("CurrentLedger = %d, want 3", currentLedger)
 	}
@@ -40,7 +39,6 @@ func Test_HistoryDBLedgerSourceNextLedger(t *testing.T) {
 	ledgerChan := ledgerSource.NextLedger(0)
 
 	nextLedger := <-ledgerChan
-
 	if nextLedger != 3 {
 		t.Errorf("NextLedger = %d, want 3", nextLedger)
 	}
