@@ -403,30 +403,39 @@ func validateCursorWithinHistory(pq db2.PageQuery) error {
 	return nil
 }
 
-type baseAction interface {
-	Streamable() bool
-}
-
 type pageAction interface {
-	baseAction
-	GetObject(r *http.Request) ([]hal.Pageable, error)
+	GetResourcePage(r *http.Request) ([]hal.Pageable, error)
 }
 
-type actionHandler struct {
-	pageAction    pageAction
+type pageActionHandler struct {
+	action        pageAction
+	streamable    bool
 	streamHandler actions.StreamHandler
 }
 
-func (handler actionHandler) renderPage(w http.ResponseWriter, r *http.Request) {
-	records, err := handler.pageAction.GetObject(r)
+func restPageHandler(action pageAction) pageActionHandler {
+	return pageActionHandler{action: action}
+}
 
+func streamablePageHandler(
+	action pageAction,
+	streamHandler actions.StreamHandler,
+) pageActionHandler {
+	return pageActionHandler{
+		action:        action,
+		streamable:    true,
+		streamHandler: streamHandler,
+	}
+}
+
+func (handler pageActionHandler) renderPage(w http.ResponseWriter, r *http.Request) {
+	records, err := handler.action.GetResourcePage(r)
 	if err != nil {
 		problem.Render(r.Context(), w, err)
 		return
 	}
 
 	page, err := buildPage(r, records)
-
 	if err != nil {
 		problem.Render(r.Context(), w, err)
 		return
@@ -439,10 +448,9 @@ func (handler actionHandler) renderPage(w http.ResponseWriter, r *http.Request) 
 	)
 }
 
-func (handler actionHandler) renderStream(w http.ResponseWriter, r *http.Request) {
+func (handler pageActionHandler) renderStream(w http.ResponseWriter, r *http.Request) {
 	// Use pq to get SSE limit.
 	pq, err := actions.GetPageQuery(r)
-
 	if err != nil {
 		problem.Render(r.Context(), w, err)
 		return
@@ -453,7 +461,7 @@ func (handler actionHandler) renderStream(w http.ResponseWriter, r *http.Request
 		r,
 		int(pq.Limit),
 		func() ([]sse.Event, error) {
-			records, err := handler.pageAction.GetObject(r)
+			records, err := handler.action.GetResourcePage(r)
 			if err != nil {
 				return nil, err
 			}
@@ -476,13 +484,13 @@ func (handler actionHandler) renderStream(w http.ResponseWriter, r *http.Request
 	)
 }
 
-func (handler actionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (handler pageActionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch render.Negotiate(r) {
 	case render.MimeHal, render.MimeJSON:
 		handler.renderPage(w, r)
 		return
 	case render.MimeEventStream:
-		if handler.pageAction.Streamable() {
+		if handler.streamable {
 			handler.renderStream(w, r)
 			return
 		}
@@ -493,7 +501,6 @@ func (handler actionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func buildPage(r *http.Request, records []hal.Pageable) (hal.Page, error) {
 	pageQuery, err := actions.GetPageQuery(r)
-
 	if err != nil {
 		return hal.Page{}, err
 	}

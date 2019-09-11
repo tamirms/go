@@ -12,42 +12,31 @@ import (
 	"github.com/stellar/go/xdr"
 )
 
-// GetOffersHandler is the http handler for the /offers endpoint
+// GetOffersHandler is the action handler for the /offers endpoint
 type GetOffersHandler struct {
 	HistoryQ *history.Q
 }
 
-// Streamable signals if this action supports streaming or not.
-func (handler GetOffersHandler) Streamable() bool {
-	return false
-}
-
-// GetObject returns an offer page.
-func (handler GetOffersHandler) GetObject(r *http.Request) ([]hal.Pageable, error) {
+// GetResourcePage returns a page of offers.
+func (handler GetOffersHandler) GetResourcePage(r *http.Request) ([]hal.Pageable, error) {
 	ctx := r.Context()
 	pq, err := GetPageQuery(r)
-
 	if err != nil {
 		return []hal.Pageable{}, err
 	}
 
 	seller, err := GetString(r, "seller")
-
 	if err != nil {
 		return []hal.Pageable{}, err
 	}
 
 	var selling *xdr.Asset
-	sellingAsset, found := MaybeGetAsset(r, "selling_")
-
-	if found {
+	if sellingAsset, found := MaybeGetAsset(r, "selling_"); found {
 		selling = &sellingAsset
 	}
 
 	var buying *xdr.Asset
-	buyingAsset, found := MaybeGetAsset(r, "buying_")
-
-	if found {
+	if buyingAsset, found := MaybeGetAsset(r, "buying_"); found {
 		buying = &buyingAsset
 	}
 
@@ -58,8 +47,7 @@ func (handler GetOffersHandler) GetObject(r *http.Request) ([]hal.Pageable, erro
 		Buying:    buying,
 	}
 
-	offers, err := loadOffersQuery(ctx, handler.HistoryQ, query)
-
+	offers, err := getOffersPage(ctx, handler.HistoryQ, query)
 	if err != nil {
 		return []hal.Pageable{}, err
 	}
@@ -67,15 +55,10 @@ func (handler GetOffersHandler) GetObject(r *http.Request) ([]hal.Pageable, erro
 	return offers, nil
 }
 
-// GetAccountOffersHandler is the http handler for the
+// GetAccountOffersHandler is the action handler for the
 // `/accounts/{account_id}/offers` endpoint when using experimental ingestion.
 type GetAccountOffersHandler struct {
 	HistoryQ *history.Q
-}
-
-// Streamable signals if this action supports streaming or not.
-func (handler GetAccountOffersHandler) Streamable() bool {
-	return true
 }
 
 func (handler GetAccountOffersHandler) parseOffersQuery(r *http.Request) (history.OffersQuery, error) {
@@ -97,17 +80,15 @@ func (handler GetAccountOffersHandler) parseOffersQuery(r *http.Request) (histor
 	return query, nil
 }
 
-// GetObject gets objects for requests.
-func (handler GetAccountOffersHandler) GetObject(r *http.Request) ([]hal.Pageable, error) {
+// GetResourcePage returns a page of offers for a given account.
+func (handler GetAccountOffersHandler) GetResourcePage(r *http.Request) ([]hal.Pageable, error) {
 	ctx := r.Context()
 	query, err := handler.parseOffersQuery(r)
-
 	if err != nil {
 		return []hal.Pageable{}, err
 	}
 
-	offers, err := loadOffersQuery(ctx, handler.HistoryQ, query)
-
+	offers, err := getOffersPage(ctx, handler.HistoryQ, query)
 	if err != nil {
 		return []hal.Pageable{}, err
 	}
@@ -115,27 +96,18 @@ func (handler GetAccountOffersHandler) GetObject(r *http.Request) ([]hal.Pageabl
 	return offers, nil
 }
 
-func loadOffersQuery(ctx context.Context, historyQ *history.Q, query history.OffersQuery) ([]hal.Pageable, error) {
+func getOffersPage(ctx context.Context, historyQ *history.Q, query history.OffersQuery) ([]hal.Pageable, error) {
 	records, err := historyQ.GetOffers(query)
-
 	if err != nil {
 		return []hal.Pageable{}, err
 	}
 
-	offers, err := buildOffersResponse(ctx, historyQ, records)
-
-	return offers, err
-}
-
-func buildOffersResponse(ctx context.Context, historyQ *history.Q, records []history.Offer) ([]hal.Pageable, error) {
 	ledgerCache := history.LedgerCache{}
 	for _, record := range records {
 		ledgerCache.Queue(int32(record.LastModifiedLedger))
 	}
 
-	err := ledgerCache.Load(historyQ)
-
-	if err != nil {
+	if err := ledgerCache.Load(historyQ); err != nil {
 		return nil, errors.Wrap(err, "failed to load ledger batch")
 	}
 

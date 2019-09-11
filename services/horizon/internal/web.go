@@ -129,7 +129,7 @@ func installPathFindingRoutes(
 }
 
 func installAccountOfferRoute(
-	offersHandler actions.GetAccountOffersHandler,
+	offersAction actions.GetAccountOffersHandler,
 	streamHandler actions.StreamHandler,
 	enableExperimentalIngestion bool,
 	r *chi.Mux,
@@ -137,10 +137,7 @@ func installAccountOfferRoute(
 	path := "/accounts/{account_id}/offers"
 	var handler http.Handler
 	if enableExperimentalIngestion {
-		handler = actionHandler{
-			pageAction:    offersHandler,
-			streamHandler: streamHandler,
-		}
+		handler = streamablePageHandler(offersAction, streamHandler)
 	} else {
 		handler = http.HandlerFunc(OffersByAccountAction{}.Handle)
 	}
@@ -196,7 +193,12 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 		},
 	}
 
-	installAccountOfferRoute(offersHandler, streamHandler, config.EnableExperimentalIngestion, r)
+	installAccountOfferRoute(
+		offersHandler,
+		streamHandler,
+		config.EnableExperimentalIngestion,
+		r,
+	)
 
 	// transaction history actions
 	r.Route("/transactions", func(r chi.Router) {
@@ -227,15 +229,11 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 	r.Get("/trade_aggregations", TradeAggregateIndexAction{}.Handle)
 
 	r.Route("/offers", func(r chi.Router) {
-		r.With(acceptOnlyJSON, requiresExperimentalIngestion).
+		r.With(requiresExperimentalIngestion).
 			Method(
 				http.MethodGet,
 				"/",
-				actionHandler{
-					pageAction: actions.GetOffersHandler{
-						HistoryQ: w.historyQ,
-					},
-				},
+				restPageHandler(actions.GetOffersHandler{HistoryQ: w.historyQ}),
 			)
 		r.With(acceptOnlyJSON, requiresExperimentalIngestion).
 			Get("/{id}", getOfferResource)
