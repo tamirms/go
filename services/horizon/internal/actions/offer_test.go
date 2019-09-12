@@ -99,11 +99,7 @@ func makeAccountOffersRequest(
 func pageableToOffers(t *testing.T, page []hal.Pageable) []horizon.Offer {
 	var offers []horizon.Offer
 	for _, entry := range page {
-		offer, ok := entry.(horizon.Offer)
-		if !ok {
-			t.Fatalf("page does not consist of offers")
-		}
-		offers = append(offers, offer)
+		offers = append(offers, entry.(horizon.Offer))
 	}
 	return offers
 }
