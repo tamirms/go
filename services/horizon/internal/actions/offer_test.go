@@ -5,10 +5,13 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/stellar/go/protocols/horizon"
+	"github.com/stellar/go/services/horizon/internal/db2/core"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
+	"github.com/stellar/go/services/horizon/internal/ingest"
 	"github.com/stellar/go/services/horizon/internal/test"
 	"github.com/stellar/go/support/render/hal"
 	"github.com/stellar/go/xdr"
@@ -105,13 +108,25 @@ func pageableToOffers(t *testing.T, page []hal.Pageable) []horizon.Offer {
 }
 
 func TestGetOffersHandler(t *testing.T) {
-	tt := test.Start(t).Scenario("base")
+	tt := test.Start(t)
 	defer tt.Finish()
+	test.ResetHorizonDB(t, tt.HorizonDB)
 
 	q := &history.Q{tt.HorizonSession()}
-	handler := GetOffersHandler{
-		HistoryQ: q,
-	}
+	handler := GetOffersHandler{HistoryQ: q}
+	ingestion := ingest.Ingestion{DB: tt.HorizonSession()}
+
+	ledgerCloseTime := time.Now().Unix()
+	tt.Assert.NoError(ingestion.Start())
+	ingestion.Ledger(
+		1,
+		&core.LedgerHeader{Sequence: 3, CloseTime: ledgerCloseTime},
+		0,
+		0,
+		0,
+	)
+	tt.Assert.NoError(ingestion.Flush())
+	tt.Assert.NoError(ingestion.Close())
 
 	tt.Assert.NoError(q.UpsertOffer(eurOffer, 3))
 	tt.Assert.NoError(q.UpsertOffer(twoEurOffer, 3))
@@ -130,10 +145,7 @@ func TestGetOffersHandler(t *testing.T) {
 		tt.Assert.Equal(issuer.Address(), offers[0].Seller)
 		tt.Assert.Equal(issuer.Address(), offers[0].Buying.Issuer)
 		tt.Assert.Equal(int32(3), offers[0].LastModifiedLedger)
-
-		ledger := new(history.Ledger)
-		tt.Assert.NoError(q.LedgerBySequence(ledger, 3))
-		tt.Assert.True(ledger.ClosedAt.Equal(*offers[0].LastModifiedTime))
+		tt.Assert.Equal(ledgerCloseTime, offers[0].LastModifiedTime.Unix())
 	})
 
 	t.Run("Filter by seller", func(t *testing.T) {
