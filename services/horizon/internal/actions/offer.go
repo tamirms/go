@@ -22,12 +22,12 @@ func (handler GetOffersHandler) GetResourcePage(r *http.Request) ([]hal.Pageable
 	ctx := r.Context()
 	pq, err := GetPageQuery(r)
 	if err != nil {
-		return []hal.Pageable{}, err
+		return nil, err
 	}
 
 	seller, err := GetString(r, "seller")
 	if err != nil {
-		return []hal.Pageable{}, err
+		return nil, err
 	}
 
 	var selling *xdr.Asset
@@ -49,7 +49,7 @@ func (handler GetOffersHandler) GetResourcePage(r *http.Request) ([]hal.Pageable
 
 	offers, err := getOffersPage(ctx, handler.HistoryQ, query)
 	if err != nil {
-		return []hal.Pageable{}, err
+		return nil, err
 	}
 
 	return offers, nil
@@ -85,12 +85,12 @@ func (handler GetAccountOffersHandler) GetResourcePage(r *http.Request) ([]hal.P
 	ctx := r.Context()
 	query, err := handler.parseOffersQuery(r)
 	if err != nil {
-		return []hal.Pageable{}, err
+		return nil, err
 	}
 
 	offers, err := getOffersPage(ctx, handler.HistoryQ, query)
 	if err != nil {
-		return []hal.Pageable{}, err
+		return nil, err
 	}
 
 	return offers, nil
@@ -99,7 +99,7 @@ func (handler GetAccountOffersHandler) GetResourcePage(r *http.Request) ([]hal.P
 func getOffersPage(ctx context.Context, historyQ *history.Q, query history.OffersQuery) ([]hal.Pageable, error) {
 	records, err := historyQ.GetOffers(query)
 	if err != nil {
-		return []hal.Pageable{}, err
+		return nil, err
 	}
 
 	ledgerCache := history.LedgerCache{}
