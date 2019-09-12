@@ -1,19 +1,17 @@
-package sse
+package ledger
 
 import (
 	"testing"
-
-	"github.com/stellar/go/services/horizon/internal/ledger"
 )
 
 func Test_HistoryDBLedgerSourceCurrentLedger(t *testing.T) {
-	state := ledger.State{
+	state := State{
 		ExpHistoryLatest: 3,
 	}
 
-	ledgerSource := HistoryDBLedgerSource{
-		SSEUpdateFrequency: 0,
-		CurrentState: func() ledger.State {
+	ledgerSource := HistoryDBSource{
+		updateFrequency: 0,
+		currentState: func() State {
 			return state
 		},
 	}
@@ -25,13 +23,13 @@ func Test_HistoryDBLedgerSourceCurrentLedger(t *testing.T) {
 }
 
 func Test_HistoryDBLedgerSourceNextLedger(t *testing.T) {
-	state := ledger.State{
+	state := State{
 		ExpHistoryLatest: 3,
 	}
 
-	ledgerSource := HistoryDBLedgerSource{
-		SSEUpdateFrequency: 0,
-		CurrentState: func() ledger.State {
+	ledgerSource := HistoryDBSource{
+		updateFrequency: 0,
+		currentState: func() State {
 			return state
 		},
 	}

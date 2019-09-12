@@ -188,11 +188,8 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 	}
 
 	streamHandler := sse.StreamHandler{
-		RateLimiter: w.rateLimiter,
-		LedgerSource: sse.HistoryDBLedgerSource{
-			SSEUpdateFrequency: w.sseUpdateFrequency,
-			CurrentState:       ledger.CurrentState,
-		},
+		RateLimiter:  w.rateLimiter,
+		LedgerSource: ledger.NewHistoryDBSource(w.sseUpdateFrequency),
 	}
 
 	installAccountOfferRoute(

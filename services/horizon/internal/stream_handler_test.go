@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi"
+	"github.com/stellar/go/services/horizon/internal/ledger"
 	"github.com/stellar/go/services/horizon/internal/render/sse"
 	"github.com/stellar/go/support/render/hal"
 )
@@ -20,7 +21,7 @@ import (
 // StreamTest utility struct to wrap SSE related tests.
 type StreamTest struct {
 	handler      http.Handler
-	ledgerSource *sse.TestingLedgerSource
+	ledgerSource *ledger.TestingSource
 	cancel       context.CancelFunc
 	done         chan bool
 }
@@ -28,7 +29,7 @@ type StreamTest struct {
 // NewStreamTest returns a StreamTest struct
 func NewStreamTest(
 	handler http.Handler,
-	ledgerSource *sse.TestingLedgerSource,
+	ledgerSource *ledger.TestingSource,
 ) *StreamTest {
 	return &StreamTest{
 		handler:      handler,
@@ -165,7 +166,7 @@ func expectResponse(t *testing.T, expectedResponse []string) func(*httptest.Resp
 }
 
 func TestRenderStream(t *testing.T) {
-	ledgerSource := sse.NewTestingLedgerSource(3)
+	ledgerSource := ledger.NewTestingSource(3)
 	action := &testPageAction{
 		objects: []string{"a", "b", "c"},
 	}
