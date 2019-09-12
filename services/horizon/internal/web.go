@@ -130,7 +130,7 @@ func installPathFindingRoutes(
 
 func installAccountOfferRoute(
 	offersAction actions.GetAccountOffersHandler,
-	streamHandler actions.StreamHandler,
+	streamHandler sse.StreamHandler,
 	enableExperimentalIngestion bool,
 	r *chi.Mux,
 ) {
@@ -187,9 +187,9 @@ func (w *web) mustInstallActions(config Config, pathFinder paths.Finder) {
 		HistoryQ: w.historyQ,
 	}
 
-	streamHandler := actions.StreamHandler{
+	streamHandler := sse.StreamHandler{
 		RateLimiter: w.rateLimiter,
-		LedgerSource: actions.HistoryDBLedgerSource{
+		LedgerSource: sse.HistoryDBLedgerSource{
 			SSEUpdateFrequency: w.sseUpdateFrequency,
 			CurrentState:       ledger.CurrentState,
 		},

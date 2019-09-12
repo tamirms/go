@@ -410,7 +410,7 @@ type pageAction interface {
 type pageActionHandler struct {
 	action        pageAction
 	streamable    bool
-	streamHandler actions.StreamHandler
+	streamHandler sse.StreamHandler
 }
 
 func restPageHandler(action pageAction) pageActionHandler {
@@ -419,7 +419,7 @@ func restPageHandler(action pageAction) pageActionHandler {
 
 func streamablePageHandler(
 	action pageAction,
-	streamHandler actions.StreamHandler,
+	streamHandler sse.StreamHandler,
 ) pageActionHandler {
 	return pageActionHandler{
 		action:        action,

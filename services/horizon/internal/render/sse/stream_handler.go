@@ -1,11 +1,10 @@
-package actions
+package sse
 
 import (
 	"net/http"
 	"time"
 
 	"github.com/stellar/go/services/horizon/internal/ledger"
-	"github.com/stellar/go/services/horizon/internal/render/sse"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/throttled"
 )
@@ -63,7 +62,7 @@ func (source HistoryDBLedgerSource) NextLedger(currentSequence uint32) chan uint
 
 // GenerateEventsFunc generates a slice of sse.Event which are sent via
 // streaming.
-type GenerateEventsFunc func() ([]sse.Event, error)
+type GenerateEventsFunc func() ([]Event, error)
 
 // ServeStream handles a SSE requests, sending data every time there is a new
 // ledger.
@@ -74,7 +73,7 @@ func (handler StreamHandler) ServeStream(
 	generateEvents GenerateEventsFunc,
 ) {
 	ctx := r.Context()
-	stream := sse.NewStream(ctx, w)
+	stream := NewStream(ctx, w)
 	stream.SetLimit(limit)
 
 	currentLedgerSequence := handler.LedgerSource.CurrentLedger()
@@ -89,7 +88,7 @@ func (handler StreamHandler) ServeStream(
 				return
 			}
 			if limited {
-				stream.Err(sse.ErrRateLimited)
+				stream.Err(ErrRateLimited)
 				return
 			}
 		}

@@ -11,6 +11,7 @@ import (
 	"github.com/stellar/go/services/horizon/internal/actions"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
 	"github.com/stellar/go/services/horizon/internal/render/problem"
+	"github.com/stellar/go/services/horizon/internal/render/sse"
 	"github.com/stellar/go/services/horizon/internal/test"
 	"github.com/stellar/go/xdr"
 )
@@ -166,6 +167,6 @@ func accountOffersClient(
 	router := chi.NewRouter()
 	router.Use(appContextMiddleware(app))
 
-	installAccountOfferRoute(handler, actions.StreamHandler{}, true, router)
+	installAccountOfferRoute(handler, sse.StreamHandler{}, true, router)
 	return test.NewRequestHelper(router)
 }
