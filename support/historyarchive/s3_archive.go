@@ -176,7 +176,7 @@ func makeS3Backend(bucket string, prefix string, opts ConnectOptions) (ArchiveBa
 		Region:   aws.String(opts.S3Region),
 		Endpoint: aws.String(opts.S3Endpoint),
 	}
-	cfg = cfg.WithS3ForcePathStyle(true)
+	cfg = cfg.WithS3ForcePathStyle(true).WithHTTPClient(&http.Client{Timeout: opts.HTTPTimeout})
 
 	sess, err := session.NewSession(cfg)
 	if err != nil {

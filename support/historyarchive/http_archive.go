@@ -110,7 +110,10 @@ func (b *HttpArchiveBackend) CanListFiles() bool {
 }
 
 func makeHttpBackend(base *url.URL, opts ConnectOptions) ArchiveBackend {
-	return &HttpArchiveBackend{
+	backend := &HttpArchiveBackend{
 		base: *base,
 	}
+	backend.client.Timeout = opts.HTTPTimeout
+
+	return backend
 }

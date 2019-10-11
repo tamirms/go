@@ -355,6 +355,8 @@ func (s *System) Shutdown() {
 func createArchive(archiveURL string) (*historyarchive.Archive, error) {
 	return historyarchive.Connect(
 		archiveURL,
-		historyarchive.ConnectOptions{},
+		historyarchive.ConnectOptions{
+			HTTPTimeout: 2 * time.Minute,
+		},
 	)
 }

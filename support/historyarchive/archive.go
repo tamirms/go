@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const hexPrefixPat = "/[0-9a-f]{2}/[0-9a-f]{2}/[0-9a-f]{2}/"
@@ -36,6 +37,8 @@ type ConnectOptions struct {
 	S3Region         string
 	S3Endpoint       string
 	UnsignedRequests bool
+	// HTTPTimeout is a timeout applied on HTTP requests issued from the ArchiveBackend
+	HTTPTimeout time.Duration
 }
 
 type ArchiveBackend interface {
