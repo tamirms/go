@@ -8,6 +8,8 @@ bumps.  A breaking change will get clearly notified in this log.
 
 ## v0.23.0
 
+### Breaking Changes
+
 * Remove deprecated `fee_paid` field on Transaction resource. Please use new fields added in 0.18.0: `max_fee` that defines the maximum fee the source account is willing to pay and `fee_charged` that defines the fee that was actually paid for a transaction. See [CAP-0005](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0005.md) for more information.
 
 ## v0.22.1
