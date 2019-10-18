@@ -54,9 +54,18 @@ func AccountInfo(ctx context.Context, cq *core.Q, addr string) (*protocol.Accoun
 	return &resource, errors.Wrap(err, "populating account")
 }
 
-// GetAccountsHandler is the action handler for the /accounts endpoint
-type GetAccountsHandler struct {
+type getAccountsHandler struct {
 	HistoryQ *history.Q
+}
+
+// NewAccounts returns a PageHandler for the `/accounts` endpoint
+func NewAccounts(historyQ *history.Q) PageHandler {
+	return repeatableReadPageHandler{
+		historyQ: historyQ,
+		withQ: func(q *history.Q) PageHandler {
+			return getAccountsHandler{q}
+		},
+	}
 }
 
 // GetResourcePage returns a page containing the account records that have
@@ -65,7 +74,7 @@ type GetAccountsHandler struct {
 // when the new ingestion system is fully integrated, this endpoint can be used
 // to find accounts for signer but also accounts for assets, home domain,
 // inflation_dest etc.
-func (handler GetAccountsHandler) GetResourcePage(
+func (handler getAccountsHandler) GetResourcePage(
 	w HeaderWriter,
 	r *http.Request,
 ) ([]hal.Pageable, error) {

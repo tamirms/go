@@ -339,18 +339,11 @@ func validateCursorWithinHistory(pq db2.PageQuery) error {
 	return nil
 }
 
-type objectAction interface {
-	GetResource(
-		w actions.HeaderWriter,
-		r *http.Request,
-	) (hal.Pageable, error)
+type objectHTTPHandler struct {
+	action actions.ObjectHandler
 }
 
-type objectActionHandler struct {
-	action objectAction
-}
-
-func (handler objectActionHandler) ServeHTTP(
+func (handler objectHTTPHandler) ServeHTTP(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
@@ -375,19 +368,12 @@ func (handler objectActionHandler) ServeHTTP(
 
 const singleObjectStreamLimit = 10
 
-type streamableObjectAction interface {
-	GetResource(
-		w actions.HeaderWriter,
-		r *http.Request,
-	) (actions.StreamableObjectResponse, error)
-}
-
-type streamableObjectActionHandler struct {
-	action        streamableObjectAction
+type streamableObjectHTTPHandler struct {
+	action        actions.StreamableObjectHandler
 	streamHandler sse.StreamHandler
 }
 
-func (handler streamableObjectActionHandler) ServeHTTP(
+func (handler streamableObjectHTTPHandler) ServeHTTP(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
@@ -413,7 +399,7 @@ func (handler streamableObjectActionHandler) ServeHTTP(
 	problem.Render(r.Context(), w, hProblem.NotAcceptable)
 }
 
-func (handler streamableObjectActionHandler) renderStream(
+func (handler streamableObjectHTTPHandler) renderStream(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
@@ -438,32 +424,28 @@ func (handler streamableObjectActionHandler) renderStream(
 	)
 }
 
-type pageAction interface {
-	GetResourcePage(w actions.HeaderWriter, r *http.Request) ([]hal.Pageable, error)
-}
-
-type pageActionHandler struct {
-	action        pageAction
+type pageHTTPHandler struct {
+	action        actions.PageHandler
 	streamable    bool
 	streamHandler sse.StreamHandler
 }
 
-func restPageHandler(action pageAction) pageActionHandler {
-	return pageActionHandler{action: action}
+func restPageHandler(action actions.PageHandler) pageHTTPHandler {
+	return pageHTTPHandler{action: action}
 }
 
 func streamablePageHandler(
-	action pageAction,
+	action actions.PageHandler,
 	streamHandler sse.StreamHandler,
-) pageActionHandler {
-	return pageActionHandler{
+) pageHTTPHandler {
+	return pageHTTPHandler{
 		action:        action,
 		streamable:    true,
 		streamHandler: streamHandler,
 	}
 }
 
-func (handler pageActionHandler) renderPage(w http.ResponseWriter, r *http.Request) {
+func (handler pageHTTPHandler) renderPage(w http.ResponseWriter, r *http.Request) {
 	records, err := handler.action.GetResourcePage(w, r)
 	if err != nil {
 		problem.Render(r.Context(), w, err)
@@ -483,7 +465,7 @@ func (handler pageActionHandler) renderPage(w http.ResponseWriter, r *http.Reque
 	)
 }
 
-func (handler pageActionHandler) renderStream(w http.ResponseWriter, r *http.Request) {
+func (handler pageHTTPHandler) renderStream(w http.ResponseWriter, r *http.Request) {
 	// Use pq to get SSE limit.
 	pq, err := actions.GetPageQuery(r)
 	if err != nil {
@@ -519,7 +501,7 @@ func (handler pageActionHandler) renderStream(w http.ResponseWriter, r *http.Req
 	)
 }
 
-func (handler pageActionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (handler pageHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch render.Negotiate(r) {
 	case render.MimeHal, render.MimeJSON:
 		handler.renderPage(w, r)

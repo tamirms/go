@@ -15,11 +15,21 @@ import (
 	"github.com/stellar/go/xdr"
 )
 
-// AssetStatsHandler is the action handler for the /asset endpoint
-type AssetStatsHandler struct {
+type assetStatsHandler struct {
+	historyQ *history.Q
 }
 
-func (handler AssetStatsHandler) validateAssetParams(code, issuer string, pq db2.PageQuery) error {
+// NewAssetStats returns a PageHandler for the `/assets` endpoint
+func NewAssetStats(historyQ *history.Q) PageHandler {
+	return repeatableReadPageHandler{
+		historyQ: historyQ,
+		withQ: func(q *history.Q) PageHandler {
+			return assetStatsHandler{q}
+		},
+	}
+}
+
+func (handler assetStatsHandler) validateAssetParams(code, issuer string, pq db2.PageQuery) error {
 	if code != "" {
 		if !validAssetCode.MatchString(code) {
 			return problem.MakeInvalidFieldProblem(
@@ -66,8 +76,7 @@ func (handler AssetStatsHandler) validateAssetParams(code, issuer string, pq db2
 	return nil
 }
 
-func (handler AssetStatsHandler) findIssuersForAssets(
-	historyQ *history.Q,
+func (handler assetStatsHandler) findIssuersForAssets(
 	assetStats []history.ExpAssetStat,
 ) (map[string]history.AccountEntry, error) {
 	issuerSet := map[string]bool{}
@@ -81,7 +90,7 @@ func (handler AssetStatsHandler) findIssuersForAssets(
 	}
 
 	accountsByID := map[string]history.AccountEntry{}
-	accounts, err := historyQ.GetAccountsByIDs(issuers)
+	accounts, err := handler.historyQ.GetAccountsByIDs(issuers)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +112,7 @@ func (handler AssetStatsHandler) findIssuersForAssets(
 }
 
 // GetResourcePage returns a page of offers.
-func (handler AssetStatsHandler) GetResourcePage(
+func (handler assetStatsHandler) GetResourcePage(
 	w HeaderWriter,
 	r *http.Request,
 ) ([]hal.Pageable, error) {
@@ -128,17 +137,12 @@ func (handler AssetStatsHandler) GetResourcePage(
 		return nil, err
 	}
 
-	historyQ, err := historyQFromRequest(r)
+	assetStats, err := handler.historyQ.GetAssetStats(code, issuer, pq)
 	if err != nil {
 		return nil, err
 	}
 
-	assetStats, err := historyQ.GetAssetStats(code, issuer, pq)
-	if err != nil {
-		return nil, err
-	}
-
-	issuerAccounts, err := handler.findIssuersForAssets(historyQ, assetStats)
+	issuerAccounts, err := handler.findIssuersForAssets(assetStats)
 	if err != nil {
 		return nil, err
 	}

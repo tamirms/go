@@ -15,7 +15,7 @@ import (
 )
 
 func TestAssetStatsValidation(t *testing.T) {
-	handler := AssetStatsHandler{}
+	handler := assetStatsHandler{}
 
 	for _, testCase := range []struct {
 		name               string
@@ -65,7 +65,7 @@ func TestAssetStatsValidation(t *testing.T) {
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			r := makeRequest(t, testCase.queryParams, map[string]string{}, nil)
+			r := makeRequest(t, testCase.queryParams, map[string]string{})
 			_, err := handler.GetResourcePage(httptest.NewRecorder(), r)
 			if err == nil {
 				t.Fatalf("expected error %v but got %v", testCase.expectedError, err)
@@ -93,7 +93,7 @@ func TestAssetStats(t *testing.T) {
 	defer tt.Finish()
 	test.ResetHorizonDB(t, tt.HorizonDB)
 	q := &history.Q{tt.HorizonSession()}
-	handler := AssetStatsHandler{}
+	handler := NewAssetStats(q)
 
 	issuer := history.AccountEntry{
 		AccountID: "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
@@ -292,7 +292,7 @@ func TestAssetStats(t *testing.T) {
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			r := makeRequest(t, testCase.queryParams, map[string]string{}, q.Session)
+			r := makeRequest(t, testCase.queryParams, map[string]string{})
 			results, err := handler.GetResourcePage(httptest.NewRecorder(), r)
 			if err != nil {
 				t.Fatalf("unexpected error %v", err)
@@ -321,7 +321,7 @@ func TestAssetStatsIssuerDoesNotExist(t *testing.T) {
 	defer tt.Finish()
 	test.ResetHorizonDB(t, tt.HorizonDB)
 	q := &history.Q{tt.HorizonSession()}
-	handler := AssetStatsHandler{}
+	handler := NewAssetStats(q)
 
 	usdAssetStat := history.ExpAssetStat{
 		AssetType:   xdr.AssetTypeAssetTypeCreditAlphanum4,
@@ -334,7 +334,7 @@ func TestAssetStatsIssuerDoesNotExist(t *testing.T) {
 	tt.Assert.NoError(err)
 	tt.Assert.Equal(numChanged, int64(1))
 
-	r := makeRequest(t, map[string]string{}, map[string]string{}, q.Session)
+	r := makeRequest(t, map[string]string{}, map[string]string{})
 	_, err = handler.GetResourcePage(httptest.NewRecorder(), r)
 	if err == nil {
 		t.Fatal("error but got not nil")

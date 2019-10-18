@@ -83,7 +83,7 @@ func NewstreamableObjectTest(
 	ledgerSource := ledger.NewTestingSource(currentLedger)
 	action.ledgerSource = ledgerSource
 	streamHandler := sse.StreamHandler{LedgerSource: ledgerSource}
-	handler := streamableObjectActionHandler{action, streamHandler}
+	handler := streamableObjectHTTPHandler{action, streamHandler}
 
 	return newStreamTest(
 		handler.renderStream,

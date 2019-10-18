@@ -69,7 +69,7 @@ func TestGetOfferByIDHandler(t *testing.T) {
 	test.ResetHorizonDB(t, tt.HorizonDB)
 
 	q := &history.Q{tt.HorizonSession()}
-	handler := GetOfferByID{}
+	handler := NewGetOfferByID(q)
 	ingestion := ingest.Ingestion{DB: tt.HorizonSession()}
 
 	ledgerCloseTime := time.Now().Unix()
@@ -98,7 +98,7 @@ func TestGetOfferByIDHandler(t *testing.T) {
 		{
 			"offer id is invalid",
 			makeRequest(
-				t, map[string]string{}, map[string]string{"id": "invalid"}, q.Session,
+				t, map[string]string{}, map[string]string{"id": "invalid"},
 			),
 			func(err error) {
 				tt.Assert.Error(err)
@@ -113,7 +113,7 @@ func TestGetOfferByIDHandler(t *testing.T) {
 		{
 			"offer does not exist",
 			makeRequest(
-				t, map[string]string{}, map[string]string{"id": "1234567"}, q.Session,
+				t, map[string]string{}, map[string]string{"id": "1234567"},
 			),
 			func(err error) {
 				tt.Assert.Equal(err, sql.ErrNoRows)
@@ -125,7 +125,7 @@ func TestGetOfferByIDHandler(t *testing.T) {
 		{
 			"offer with ledger close time",
 			makeRequest(
-				t, map[string]string{}, map[string]string{"id": "4"}, q.Session,
+				t, map[string]string{}, map[string]string{"id": "4"},
 			),
 			func(err error) {
 				tt.Assert.NoError(err)
@@ -145,7 +145,7 @@ func TestGetOfferByIDHandler(t *testing.T) {
 		{
 			"offer without ledger close time",
 			makeRequest(
-				t, map[string]string{}, map[string]string{"id": "6"}, q.Session,
+				t, map[string]string{}, map[string]string{"id": "6"},
 			),
 			func(err error) {
 				tt.Assert.NoError(err)
@@ -179,7 +179,7 @@ func TestGetOffersHandler(t *testing.T) {
 	test.ResetHorizonDB(t, tt.HorizonDB)
 
 	q := &history.Q{tt.HorizonSession()}
-	handler := GetOffersHandler{}
+	handler := NewGetOffers(q)
 	ingestion := ingest.Ingestion{DB: tt.HorizonSession()}
 
 	ledgerCloseTime := time.Now().Unix()
@@ -205,7 +205,7 @@ func TestGetOffersHandler(t *testing.T) {
 		records, err := handler.GetResourcePage(
 			httptest.NewRecorder(),
 			makeRequest(
-				t, map[string]string{}, map[string]string{}, q.Session,
+				t, map[string]string{}, map[string]string{},
 			),
 		)
 		tt.Assert.NoError(err)
@@ -231,7 +231,6 @@ func TestGetOffersHandler(t *testing.T) {
 					"seller": issuer.Address(),
 				},
 				map[string]string{},
-				q.Session,
 			),
 		)
 		tt.Assert.NoError(err)
@@ -254,7 +253,6 @@ func TestGetOffersHandler(t *testing.T) {
 					"selling_asset_type": asset.Type,
 				},
 				map[string]string{},
-				q.Session,
 			),
 		)
 		tt.Assert.NoError(err)
@@ -278,7 +276,6 @@ func TestGetOffersHandler(t *testing.T) {
 					"selling_asset_issuer": asset.Issuer,
 				},
 				map[string]string{},
-				q.Session,
 			),
 		)
 		tt.Assert.NoError(err)
@@ -302,7 +299,6 @@ func TestGetOffersHandler(t *testing.T) {
 					"buying_asset_issuer": asset.Issuer,
 				},
 				map[string]string{},
-				q.Session,
 			),
 		)
 		tt.Assert.NoError(err)
@@ -326,7 +322,6 @@ func TestGetOffersHandler(t *testing.T) {
 					"buying_asset_issuer": asset.Issuer,
 				},
 				map[string]string{},
-				q.Session,
 			),
 		)
 		tt.Assert.NoError(err)
@@ -345,7 +340,7 @@ func TestGetAccountOffersHandler(t *testing.T) {
 
 	test.ResetHorizonDB(t, tt.HorizonDB)
 	q := &history.Q{tt.HorizonSession()}
-	handler := GetAccountOffersHandler{}
+	handler := NewGetAccountOffers(q)
 
 	_, err := q.InsertOffer(eurOffer, 3)
 	tt.Assert.NoError(err)
@@ -360,7 +355,6 @@ func TestGetAccountOffersHandler(t *testing.T) {
 			t,
 			map[string]string{},
 			map[string]string{"account_id": issuer.Address()},
-			q.Session,
 		),
 	)
 	tt.Assert.NoError(err)

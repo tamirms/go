@@ -34,7 +34,7 @@ func TestGetAccountsHandlerPageNoResults(t *testing.T) {
 	test.ResetHorizonDB(t, tt.HorizonDB)
 
 	q := &history.Q{tt.HorizonSession()}
-	handler := &GetAccountsHandler{HistoryQ: q}
+	handler := NewAccounts(q)
 	records, err := handler.GetResourcePage(
 		httptest.NewRecorder(),
 		makeRequest(
@@ -43,7 +43,6 @@ func TestGetAccountsHandlerPageNoResults(t *testing.T) {
 				"signer": "GCXKG6RN4ONIEPCMNFB732A436Z5PNDSRLGWK7GBLCMQLIFO4S7EYWVU",
 			},
 			map[string]string{},
-			q.Session,
 		),
 	)
 	tt.Assert.NoError(err)
@@ -56,7 +55,7 @@ func TestGetAccountsHandlerPageResults(t *testing.T) {
 	test.ResetHorizonDB(t, tt.HorizonDB)
 
 	q := &history.Q{tt.HorizonSession()}
-	handler := &GetAccountsHandler{HistoryQ: q}
+	handler := NewAccounts(q)
 
 	rows := []history.AccountSigner{
 		history.AccountSigner{
@@ -88,7 +87,6 @@ func TestGetAccountsHandlerPageResults(t *testing.T) {
 				"signer": "GCXKG6RN4ONIEPCMNFB732A436Z5PNDSRLGWK7GBLCMQLIFO4S7EYWVU",
 			},
 			map[string]string{},
-			q.Session,
 		),
 	)
 
@@ -111,7 +109,6 @@ func TestGetAccountsHandlerPageResults(t *testing.T) {
 				"cursor": "GABGMPEKKDWR2WFH5AJOZV5PDKLJEHGCR3Q24ALETWR5H3A7GI3YTS7V",
 			},
 			map[string]string{},
-			q.Session,
 		),
 	)
 

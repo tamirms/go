@@ -451,7 +451,7 @@ func TestOrderbookGetResourceValidation(t *testing.T) {
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			r := makeRequest(t, testCase.queryParams, map[string]string{}, nil)
+			r := makeRequest(t, testCase.queryParams, map[string]string{})
 			w := httptest.NewRecorder()
 			_, err := handler.GetResource(w, r)
 			if err == nil || err.Error() != invalidOrderBook.Error() {
@@ -642,7 +642,6 @@ func TestOrderbookGetResource(t *testing.T) {
 					"limit":               strconv.Itoa(testCase.limit),
 				},
 				map[string]string{},
-				nil,
 			)
 			w := httptest.NewRecorder()
 			response, err := handler.GetResource(w, r)

@@ -12,12 +12,22 @@ import (
 	"github.com/stellar/go/xdr"
 )
 
-// GetOfferByID is the action handler for the /offers/{id} endpoint
-type GetOfferByID struct {
+type getOfferByID struct {
+	historyQ *history.Q
+}
+
+// NewGetOfferByID returns an ObjectHandler for the /offers/{id} endpoint
+func NewGetOfferByID(historyQ *history.Q) ObjectHandler {
+	return repeatableReadObjectHandler{
+		historyQ: historyQ,
+		withQ: func(q *history.Q) ObjectHandler {
+			return getOfferByID{q}
+		},
+	}
 }
 
 // GetResource returns an offer by id.
-func (handler GetOfferByID) GetResource(
+func (handler getOfferByID) GetResource(
 	w HeaderWriter,
 	r *http.Request,
 ) (hal.Pageable, error) {
@@ -27,22 +37,17 @@ func (handler GetOfferByID) GetResource(
 		return nil, err
 	}
 
-	historyQ, err := historyQFromRequest(r)
-	if err != nil {
-		return nil, err
-	}
-
-	record, err := historyQ.GetOfferByID(offerID)
+	record, err := handler.historyQ.GetOfferByID(offerID)
 	if err != nil {
 		return nil, err
 	}
 
 	ledger := new(history.Ledger)
-	err = historyQ.LedgerBySequence(
+	err = handler.historyQ.LedgerBySequence(
 		ledger,
 		int32(record.LastModifiedLedger),
 	)
-	if historyQ.NoRows(err) {
+	if handler.historyQ.NoRows(err) {
 		ledger = nil
 	} else if err != nil {
 		return nil, err
@@ -53,12 +58,22 @@ func (handler GetOfferByID) GetResource(
 	return offerResponse, nil
 }
 
-// GetOffersHandler is the action handler for the /offers endpoint
-type GetOffersHandler struct {
+type getOffersHandler struct {
+	historyQ *history.Q
+}
+
+// NewGetOffers returns a PageHandler for the /offers endpoint
+func NewGetOffers(historyQ *history.Q) PageHandler {
+	return repeatableReadPageHandler{
+		historyQ: historyQ,
+		withQ: func(q *history.Q) PageHandler {
+			return getOffersHandler{q}
+		},
+	}
 }
 
 // GetResourcePage returns a page of offers.
-func (handler GetOffersHandler) GetResourcePage(
+func (handler getOffersHandler) GetResourcePage(
 	w HeaderWriter,
 	r *http.Request,
 ) ([]hal.Pageable, error) {
@@ -90,12 +105,7 @@ func (handler GetOffersHandler) GetResourcePage(
 		Buying:    buying,
 	}
 
-	historyQ, err := historyQFromRequest(r)
-	if err != nil {
-		return nil, err
-	}
-
-	offers, err := getOffersPage(ctx, historyQ, query)
+	offers, err := getOffersPage(ctx, handler.historyQ, query)
 	if err != nil {
 		return nil, err
 	}
@@ -103,12 +113,21 @@ func (handler GetOffersHandler) GetResourcePage(
 	return offers, nil
 }
 
-// GetAccountOffersHandler is the action handler for the
-// `/accounts/{account_id}/offers` endpoint when using experimental ingestion.
-type GetAccountOffersHandler struct {
+type getAccountOffersHandler struct {
+	historyQ *history.Q
 }
 
-func (handler GetAccountOffersHandler) parseOffersQuery(r *http.Request) (history.OffersQuery, error) {
+// NewGetAccountOffers returns a PageHandler for the `/accounts/{account_id}/offers` endpoint
+func NewGetAccountOffers(historyQ *history.Q) PageHandler {
+	return repeatableReadPageHandler{
+		historyQ: historyQ,
+		withQ: func(q *history.Q) PageHandler {
+			return getAccountOffersHandler{q}
+		},
+	}
+}
+
+func (handler getAccountOffersHandler) parseOffersQuery(r *http.Request) (history.OffersQuery, error) {
 	pq, err := GetPageQuery(r)
 	if err != nil {
 		return history.OffersQuery{}, err
@@ -128,7 +147,7 @@ func (handler GetAccountOffersHandler) parseOffersQuery(r *http.Request) (histor
 }
 
 // GetResourcePage returns a page of offers for a given account.
-func (handler GetAccountOffersHandler) GetResourcePage(
+func (handler getAccountOffersHandler) GetResourcePage(
 	w HeaderWriter,
 	r *http.Request,
 ) ([]hal.Pageable, error) {
@@ -138,12 +157,7 @@ func (handler GetAccountOffersHandler) GetResourcePage(
 		return nil, err
 	}
 
-	historyQ, err := historyQFromRequest(r)
-	if err != nil {
-		return nil, err
-	}
-
-	offers, err := getOffersPage(ctx, historyQ, query)
+	offers, err := getOffersPage(ctx, handler.historyQ, query)
 	if err != nil {
 		return nil, err
 	}

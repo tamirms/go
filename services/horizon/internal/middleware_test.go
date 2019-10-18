@@ -6,12 +6,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/stellar/go/services/horizon/internal/actions"
-	horizonContext "github.com/stellar/go/services/horizon/internal/context"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
 	hProblem "github.com/stellar/go/services/horizon/internal/render/problem"
 	"github.com/stellar/go/services/horizon/internal/test"
-	"github.com/stellar/go/support/db"
 	"github.com/stellar/throttled"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -161,10 +158,6 @@ func TestRequiresExperimentalIngestion(t *testing.T) {
 	}
 
 	endpoint := func(w http.ResponseWriter, r *http.Request) {
-		session := r.Context().Value(&horizonContext.SessionContextKey).(*db.Session)
-		if session.GetTx() == nil {
-			t.Fatal("expected transaction to be in session")
-		}
 		w.WriteHeader(http.StatusOK)
 	}
 	ready := false
@@ -197,10 +190,8 @@ func TestRequiresExperimentalIngestion(t *testing.T) {
 	handler.ServeHTTP(w, request)
 	tt.Assert.Equal(http.StatusInternalServerError, w.Code)
 
-	tt.Assert.NoError(q.UpdateLastLedgerExpIngest(3))
 	tt.Assert.NoError(q.UpdateExpStateInvalid(false))
 	w = httptest.NewRecorder()
 	handler.ServeHTTP(w, request)
 	tt.Assert.Equal(http.StatusOK, w.Code)
-	tt.Assert.Equal(w.Header().Get(actions.LastLedgerHeaderName), "3")
 }

@@ -137,25 +137,6 @@ func installPathFindingRoutes(
 	})
 }
 
-func installAccountOfferRoute(
-	offersAction actions.GetAccountOffersHandler,
-	streamHandler sse.StreamHandler,
-	enableExperimentalIngestion bool,
-	r *chi.Mux,
-	requiresExperimentalIngestion *ExperimentalIngestionMiddleware,
-) {
-	path := "/accounts/{account_id}/offers"
-	if enableExperimentalIngestion {
-		r.With(requiresExperimentalIngestion.Wrap).Method(
-			http.MethodGet,
-			path,
-			streamablePageHandler(offersAction, streamHandler),
-		)
-	} else {
-		r.Get(path, OffersByAccountAction{}.Handle)
-	}
-}
-
 // mustInstallActions installs the routing configuration of horizon onto the
 // provided app.  All route registration should be implemented here.
 func (w *web) mustInstallActions(
@@ -190,7 +171,7 @@ func (w *web) mustInstallActions(
 			Method(
 				http.MethodGet,
 				"/",
-				restPageHandler(actions.GetAccountsHandler{HistoryQ: w.historyQ}),
+				restPageHandler(actions.NewAccounts(w.historyQ)),
 			)
 		r.Route("/{account_id}", func(r chi.Router) {
 			r.Get("/", w.streamShowActionHandler(w.getAccountInfo, true))
@@ -208,13 +189,19 @@ func (w *web) mustInstallActions(
 		LedgerSource: ledger.NewHistoryDBSource(w.sseUpdateFrequency),
 	}
 
-	installAccountOfferRoute(
-		actions.GetAccountOffersHandler{},
-		streamHandler,
-		config.EnableExperimentalIngestion,
-		r,
-		requiresExperimentalIngestion,
-	)
+	path := "/accounts/{account_id}/offers"
+	if config.EnableExperimentalIngestion {
+		r.With(requiresExperimentalIngestion.Wrap).Method(
+			http.MethodGet,
+			path,
+			streamablePageHandler(
+				actions.NewGetAccountOffers(w.historyQ),
+				streamHandler,
+			),
+		)
+	} else {
+		r.Get(path, OffersByAccountAction{}.Handle)
+	}
 
 	// transaction history actions
 	r.Route("/transactions", func(r chi.Router) {
@@ -249,13 +236,13 @@ func (w *web) mustInstallActions(
 			Method(
 				http.MethodGet,
 				"/",
-				restPageHandler(actions.GetOffersHandler{}),
+				restPageHandler(actions.NewGetOffers(w.historyQ)),
 			)
-		r.With(acceptOnlyJSON, requiresExperimentalIngestion.Wrap).
+		r.With(requiresExperimentalIngestion.Wrap).
 			Method(
 				http.MethodGet,
 				"/{id}",
-				objectActionHandler{actions.GetOfferByID{}},
+				objectHTTPHandler{actions.NewGetOfferByID(w.historyQ)},
 			)
 		r.Get("/{offer_id}/trades", TradeIndexAction{}.Handle)
 	})
@@ -264,7 +251,7 @@ func (w *web) mustInstallActions(
 		r.With(requiresExperimentalIngestion.Wrap).Method(
 			http.MethodGet,
 			"/order_book",
-			streamableObjectActionHandler{
+			streamableObjectHTTPHandler{
 				streamHandler: streamHandler,
 				action: actions.GetOrderbookHandler{
 					OrderBookGraph: orderBookGraph,
@@ -306,7 +293,7 @@ func (w *web) mustInstallActions(
 		r.With(requiresExperimentalIngestion.Wrap).Method(
 			http.MethodGet,
 			"/assets",
-			restPageHandler(actions.AssetStatsHandler{}),
+			restPageHandler(actions.NewAssetStats(w.historyQ)),
 		)
 	} else if config.EnableAssetStats {
 		r.Get("/assets", AssetsAction{}.Handle)
