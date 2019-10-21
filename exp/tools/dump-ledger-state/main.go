@@ -89,11 +89,8 @@ func archive(testnet bool) (*historyarchive.Archive, error) {
 	}
 
 	return historyarchive.Connect(
-		fmt.Sprintf("s3://history.stellar.org/prd/core-live/core_live_001/"),
-		historyarchive.ConnectOptions{
-			S3Region:         "eu-west-1",
-			UnsignedRequests: true,
-		},
+		fmt.Sprintf("https://history.stellar.org/prd/core-live/core_live_001/"),
+		historyarchive.ConnectOptions{},
 	)
 }
 
