@@ -62,8 +62,21 @@ const msrBufferSize = 50000
 // temp set.
 const preloadedEntries = 20000
 
-// MakeSingleLedgerStateReader is a factory method for SingleLedgerStateReader
-func MakeSingleLedgerStateReader(
+// NewStateReader constructs a StateReader for the most recently published checkpoint ledger
+func NewStateReader(
+	archive historyarchive.ArchiveInterface,
+	tempStore TempSet,
+) (*SingleLedgerStateReader, error) {
+	has, e := archive.GetRootHAS()
+	if e != nil {
+		return nil, fmt.Errorf("could not get root HAS: %s", e)
+	}
+
+	return NewStateReaderForLedger(archive, tempStore, has.CurrentLedger)
+}
+
+// NewStateReaderForLedger constructs a StateReader for a given sequence number
+func NewStateReaderForLedger(
 	archive historyarchive.ArchiveInterface,
 	tempStore TempSet,
 	sequence uint32,

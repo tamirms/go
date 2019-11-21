@@ -110,13 +110,13 @@ func (s *System) verifyState() error {
 
 	localLog.Info("Creating state reader...")
 
-	stateReader, err := io.MakeSingleLedgerStateReader(
+	stateReader, err := io.NewStateReaderForLedger(
 		s.session.GetArchive(),
 		&io.MemoryTempSet{},
 		ledgerSequence,
 	)
 	if err != nil {
-		return errors.Wrap(err, "Error running io.MakeSingleLedgerStateReader")
+		return errors.Wrap(err, "Error running io.NewStateReaderForLedger")
 	}
 	defer stateReader.Close()
 

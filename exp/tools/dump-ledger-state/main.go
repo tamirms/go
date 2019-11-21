@@ -3,20 +3,77 @@ package main
 import (
 	"flag"
 	"fmt"
+	stdio "io"
 	"os"
-	"runtime"
 	"strconv"
 	"time"
 
-	"github.com/stellar/go/exp/ingest"
+	"github.com/stellar/go/support/errors"
+
 	"github.com/stellar/go/exp/ingest/io"
-	"github.com/stellar/go/exp/ingest/pipeline"
 	"github.com/stellar/go/exp/ingest/processors"
 	"github.com/stellar/go/support/historyarchive"
 	"github.com/stellar/go/xdr"
 )
 
+// I'm not sure if this wrapper is necessary but every ingestion processor
+// seems to have this if statement:
+//
+// if entryChange.Type != xdr.LedgerEntryChangeTypeLedgerEntryState {
+// 	return entryChange, errors.New("unexpected entry change type")
+// }
+//
+// It seems strange that a StateReader would return anything other than a
+// xdr.LedgerEntryChangeTypeLedgerEntryState entry since that is what the
+// name "StateReader" implies.
+//
+// Maybe this check should be moved to io.SingleLedgerStateReader?
+type onlyState struct {
+	io.StateReader
+}
+
+func (r onlyState) Read() (xdr.LedgerEntryChange, error) {
+	entryChange, err := r.StateReader.Read()
+	if err != nil {
+		return entryChange, err
+	}
+
+	if entryChange.Type != xdr.LedgerEntryChangeTypeLedgerEntryState {
+		return entryChange, errors.New("unexpected entry change type")
+	}
+
+	return entryChange, nil
+}
+
+func dumpStateToCSV(reader io.StateReader, writers csvMap) error {
+	reader = onlyState{reader}
+	var entryChange xdr.LedgerEntryChange
+	var err error
+
+	for {
+		entryChange, err = reader.Read()
+		if err != nil {
+			break
+		}
+
+		writer, ok := writers.get(entryChange.EntryType())
+		if !ok {
+			continue
+		}
+
+		if err = processors.EntryChangeStateToCSV(writer, entryChange); err != nil {
+			return err
+		}
+	}
+
+	if err == stdio.EOF {
+		return nil
+	}
+	return err
+}
+
 func main() {
+	startTime := time.Now()
 	testnet := flag.Bool("testnet", false, "connect to the Stellar test network")
 	flag.Parse()
 
@@ -24,42 +81,40 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
-	statePipeline := &pipeline.StatePipeline{}
-	statePipeline.SetRoot(
-		pipeline.StateNode(&processors.RootProcessor{}).
-			Pipe(
-				pipeline.StateNode(&processors.EntryTypeFilter{Type: xdr.LedgerEntryTypeAccount}).
-					Pipe(pipeline.StateNode(&processors.CSVPrinter{Filename: "./accounts.csv"})),
-				pipeline.StateNode(&processors.EntryTypeFilter{Type: xdr.LedgerEntryTypeData}).
-					Pipe(pipeline.StateNode(&processors.CSVPrinter{Filename: "./accountdata.csv"})),
-				pipeline.StateNode(&processors.EntryTypeFilter{Type: xdr.LedgerEntryTypeOffer}).
-					Pipe(pipeline.StateNode(&processors.CSVPrinter{Filename: "./offers.csv"})),
-				pipeline.StateNode(&processors.EntryTypeFilter{Type: xdr.LedgerEntryTypeTrustline}).
-					Pipe(pipeline.StateNode(&processors.CSVPrinter{Filename: "./trustlines.csv"})),
-			),
-	)
-
 	ledgerSequence, err := strconv.Atoi(os.Getenv("LATEST_LEDGER"))
 	if err != nil {
 		panic(err)
 	}
 
-	session := &ingest.SingleLedgerSession{
-		LedgerSequence: uint32(ledgerSequence),
-		Archive:        archive,
-		StatePipeline:  statePipeline,
-		TempSet:        &io.MemoryTempSet{},
+	reader, err := io.NewStateReaderForLedger(
+		archive,
+		&io.MemoryTempSet{},
+		uint32(ledgerSequence),
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer reader.Close()
+
+	writers := newCSVMap()
+	defer writers.close()
+
+	for entryType, fileName := range map[xdr.LedgerEntryType]string{
+		xdr.LedgerEntryTypeAccount:   "./accounts.csv",
+		xdr.LedgerEntryTypeData:      "./accountdata.csv",
+		xdr.LedgerEntryTypeOffer:     "./offers.csv",
+		xdr.LedgerEntryTypeTrustline: "./trustlines.csv",
+	} {
+		if err := writers.put(entryType, fileName); err != nil {
+			panic(err)
+		}
 	}
 
-	doneStats := printPipelineStats(statePipeline)
-
-	err = session.Run()
-	if err != nil {
-		fmt.Println("Session errored:")
-		fmt.Println(err)
+	if err := dumpStateToCSV(reader, writers); err != nil {
+		panic(err)
 	} else {
-		fmt.Println("Session finished without errors")
+		elapsedTime := time.Since(startTime)
+		fmt.Printf("Session finished without errors: %v\n", elapsedTime)
 	}
 
 	// Remove sorted files
@@ -70,14 +125,11 @@ func main() {
 		"./trustlines_sorted.csv",
 	}
 	for _, file := range sortedFiles {
-		err := os.Remove(file)
 		// Ignore not exist errors
-		if err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
 			panic(err)
 		}
 	}
-
-	doneStats <- true
 }
 
 func archive(testnet bool) (*historyarchive.Archive, error) {
@@ -92,46 +144,4 @@ func archive(testnet bool) (*historyarchive.Archive, error) {
 		fmt.Sprintf("https://history.stellar.org/prd/core-live/core_live_001/"),
 		historyarchive.ConnectOptions{},
 	)
-}
-
-func printPipelineStats(p *pipeline.StatePipeline) chan<- bool {
-	startTime := time.Now()
-	done := make(chan bool)
-	ticker := time.NewTicker(10 * time.Second)
-
-	go func() {
-		defer ticker.Stop()
-
-		for {
-			var m runtime.MemStats
-			runtime.ReadMemStats(&m)
-
-			fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
-			fmt.Printf("\tHeapAlloc = %v MiB", bToMb(m.HeapAlloc))
-			fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
-			fmt.Printf("\tNumGC = %v", m.NumGC)
-			fmt.Printf("\tGoroutines = %v", runtime.NumGoroutine())
-			fmt.Printf("\tNumCPU = %v\n\n", runtime.NumCPU())
-
-			fmt.Printf("Duration: %s\n", time.Since(startTime))
-			fmt.Println("Pipeline status:")
-			p.PrintStatus()
-
-			fmt.Println("========================================")
-
-			select {
-			case <-ticker.C:
-				continue
-			case <-done:
-				// Pipeline done
-				return
-			}
-		}
-	}()
-
-	return done
-}
-
-func bToMb(b uint64) uint64 {
-	return b / 1024 / 1024
 }

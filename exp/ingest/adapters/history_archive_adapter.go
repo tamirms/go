@@ -58,7 +58,7 @@ func (haa *HistoryArchiveAdapter) GetState(sequence uint32, tempSet io.TempSet) 
 		return nil, fmt.Errorf("history checkpoint does not exist for ledger %d", sequence)
 	}
 
-	sr, e := io.MakeSingleLedgerStateReader(haa.archive, tempSet, sequence)
+	sr, e := io.NewStateReaderForLedger(haa.archive, tempSet, sequence)
 	if e != nil {
 		return nil, errors.Wrap(e, "could not make memory state reader")
 	}
