@@ -108,7 +108,7 @@ type Session struct {
 	// DB is the database connection that queries should be executed against.
 	DB *sqlx.DB
 
-	// Ctx is the optional context in which the repo is operating under.
+	// Ctx is the context in which the repo is operating under.
 	Ctx context.Context
 
 	tx *sqlx.Tx
