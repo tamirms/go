@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	stdio "io"
@@ -87,6 +88,7 @@ func main() {
 	}
 
 	reader, err := io.NewStateReaderForLedger(
+		context.Background(),
 		archive,
 		&io.MemoryTempSet{},
 		uint32(ledgerSequence),

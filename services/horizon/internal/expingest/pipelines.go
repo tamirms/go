@@ -192,8 +192,8 @@ func preProcessingHook(
 }
 
 func postProcessingHook(
-	ctx context.Context,
 	err error,
+	ledgerSeq uint32,
 	pipelineType pType,
 	system *System,
 	graph *orderbook.OrderBookGraph,
@@ -203,8 +203,6 @@ func postProcessingHook(
 	defer graph.Discard()
 	historyQ := &history.Q{historySession}
 	isMaster := false
-
-	ledgerSeq := pipeline.GetLedgerSequenceFromContext(ctx)
 
 	if err != nil {
 		switch errors.Cause(err).(type) {
@@ -318,6 +316,7 @@ func addPipelineHooks(
 	})
 
 	p.AddPostProcessingHook(func(ctx context.Context, err error) error {
-		return postProcessingHook(ctx, err, pipelineType, system, graph, historySession)
+		ledgerSeq := pipeline.GetLedgerSequenceFromContext(ctx)
+		return postProcessingHook(err, ledgerSeq, pipelineType, system, graph, historySession)
 	})
 }

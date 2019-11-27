@@ -1,6 +1,7 @@
 package io
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ type readResult struct {
 // entries returned by `Read()` are exactly the ledger entries present at the given
 // ledger.
 type SingleLedgerStateReader struct {
+	ctx        context.Context
 	has        *historyarchive.HistoryArchiveState
 	archive    historyarchive.ArchiveInterface
 	tempStore  TempSet
@@ -64,6 +66,7 @@ const preloadedEntries = 20000
 
 // NewStateReader constructs a StateReader for the most recently published checkpoint ledger
 func NewStateReader(
+	ctx context.Context,
 	archive historyarchive.ArchiveInterface,
 	tempStore TempSet,
 ) (*SingleLedgerStateReader, error) {
@@ -72,11 +75,12 @@ func NewStateReader(
 		return nil, fmt.Errorf("could not get root HAS: %s", e)
 	}
 
-	return NewStateReaderForLedger(archive, tempStore, has.CurrentLedger)
+	return NewStateReaderForLedger(ctx, archive, tempStore, has.CurrentLedger)
 }
 
 // NewStateReaderForLedger constructs a StateReader for a given sequence number
 func NewStateReaderForLedger(
+	ctx context.Context,
 	archive historyarchive.ArchiveInterface,
 	tempStore TempSet,
 	sequence uint32,
@@ -92,6 +96,7 @@ func NewStateReaderForLedger(
 	}
 
 	return &SingleLedgerStateReader{
+		ctx:        ctx,
 		has:        &has,
 		archive:    archive,
 		tempStore:  tempStore,
@@ -214,6 +219,14 @@ LoopBucketEntry:
 
 			for i := 0; i < preloadedEntries; i++ {
 				var entry xdr.BucketEntry
+
+				select {
+				case <-msr.ctx.Done():
+					msr.readChan <- msr.error(errors.Wrap(msr.ctx.Err(), "context is done"))
+					return false
+				default:
+				}
+
 				if e = rdr.ReadOne(&entry); e != nil {
 					if e == io.EOF {
 						if len(batch) == 0 {

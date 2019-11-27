@@ -199,7 +199,8 @@ func TestPostProcessingHook(t *testing.T) {
 				tt.Assert.NoError(err)
 			}
 
-			err = postProcessingHook(ctx, testCase.err, statePipeline, nil, graph, session)
+			ledgerSeq := pipeline.GetLedgerSequenceFromContext(ctx)
+			err = postProcessingHook(testCase.err, ledgerSeq, statePipeline, nil, graph, session)
 			if testCase.expectedError == "" {
 				tt.Assert.NoError(err)
 				tt.Assert.Equal(graph.Offers(), []xdr.OfferEntry{eurOffer})

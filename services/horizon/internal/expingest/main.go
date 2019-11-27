@@ -4,6 +4,8 @@
 package expingest
 
 import (
+	"context"
+	stdio "io"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/stellar/go/exp/ingest/ledgerbackend"
 	"github.com/stellar/go/exp/orderbook"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
+	"github.com/stellar/go/services/horizon/internal/expingest/processors"
 	"github.com/stellar/go/support/db"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/historyarchive"
@@ -84,7 +87,19 @@ type retry interface {
 	onError(func() error)
 }
 
+type ingestionStore interface {
+	Add(entryChange xdr.LedgerEntryChange) error
+	Flush() error
+}
+
 type System struct {
+	archive         *historyarchive.Archive
+	tempSet         io.TempSet
+	context         context.Context
+	cancel          context.CancelFunc
+	ingestionStores []ingestionStore
+	dbSession       *db.Session
+
 	session        liveSession
 	historyQ       dbQ
 	historySession dbSession
@@ -144,7 +159,22 @@ func NewSystem(config Config) (*System, error) {
 		TempSet: config.TempSet,
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	system := &System{
+		tempSet:   config.TempSet,
+		archive:   archive,
+		context:   ctx,
+		cancel:    cancel,
+		dbSession: config.HistorySession,
+		ingestionStores: []ingestionStore{
+			processors.NewAccountStore(historyQ),
+			processors.NewAccountDataStore(historyQ),
+			processors.NewAccountSignerStore(historyQ),
+			processors.NewOfferStore(historyQ, config.OrderBookGraph),
+			processors.NewTrustLineStore(historyQ, historyQ),
+		},
+
 		session:                  session,
 		historySession:           config.HistorySession,
 		historyQ:                 historyQ,
@@ -169,6 +199,61 @@ func NewSystem(config Config) (*System, error) {
 	)
 
 	return system, nil
+}
+
+type multiStore []ingestionStore
+
+func (s multiStore) Add(entryChange xdr.LedgerEntryChange) error {
+	for _, store := range s {
+		if err := store.Add(entryChange); err != nil {
+			return errors.Wrap(err, "could not add entry to ingestion store")
+		}
+	}
+	return nil
+}
+
+func (s multiStore) Flush() error {
+	for _, store := range s {
+		if err := store.Flush(); err != nil {
+			return errors.Wrap(err, "could not flush ingestion store")
+		}
+	}
+	return nil
+}
+
+func (s *System) ingestHistoryArchive() (uint32, error) {
+	reader, err := io.NewStateReader(
+		s.context,
+		s.archive,
+		s.tempSet,
+	)
+	if err != nil {
+		return 0, err
+	}
+	defer reader.Close()
+
+	ledger := reader.GetSequence()
+
+	store := multiStore(s.ingestionStores)
+
+	var entryChange xdr.LedgerEntryChange
+
+	for {
+		entryChange, err = reader.Read()
+		if err != nil {
+			break
+		}
+
+		err = store.Add(entryChange)
+		if err != nil {
+			break
+		}
+	}
+
+	if err == stdio.EOF {
+		return ledger, store.Flush()
+	}
+	return ledger, err
 }
 
 // Run starts ingestion system. Ingestion system supports distributed ingestion
@@ -264,20 +349,17 @@ func (s *System) Run() {
 				return errors.Wrap(err, "Error clearing ingest tables")
 			}
 
-			err = s.session.Run()
+			lastIngestedLedger, err = s.ingestHistoryArchive()
+			err = postProcessingHook(
+				err,
+				lastIngestedLedger,
+				statePipeline,
+				s,
+				s.graph,
+				s.dbSession,
+			)
 			if err != nil {
-				// Check if session processed a state, if so, continue since the
-				// last processed ledger, otherwise start over.
-				var processed bool
-				lastIngestedLedger, processed = s.session.GetLatestSuccessfullyProcessedLedger()
-				if !processed {
-					return err
-				}
-
-				log.WithFields(ilog.F{
-					"err":                  err,
-					"last_ingested_ledger": lastIngestedLedger,
-				}).Error("Error running session, resuming from the last ingested ledger")
+				return err
 			}
 		} else {
 			// The other node already ingested a state (just now or in the past)
@@ -375,6 +457,7 @@ func (s *System) setStateReady() {
 func (s *System) Shutdown() {
 	log.Info("Shutting down ingestion system...")
 	s.session.Shutdown()
+	s.cancel()
 }
 
 func createArchive(archiveURL string) (*historyarchive.Archive, error) {

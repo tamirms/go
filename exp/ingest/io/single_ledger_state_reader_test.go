@@ -2,6 +2,7 @@ package io
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"io/ioutil"
@@ -43,7 +44,12 @@ func (s *SingleLedgerStateReaderTestSuite) SetupTest() {
 		On("BucketExists", mock.AnythingOfType("historyarchive.Hash")).
 		Return(true, nil).Times(21)
 
-	s.reader, err = NewStateReaderForLedger(s.mockArchive, &MemoryTempSet{}, ledgerSeq)
+	s.reader, err = NewStateReaderForLedger(
+		context.Background(),
+		s.mockArchive,
+		&MemoryTempSet{},
+		ledgerSeq,
+	)
 	s.Require().NotNil(s.reader)
 	s.Require().NoError(err)
 	s.Assert().Equal(ledgerSeq, s.reader.sequence)
