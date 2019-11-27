@@ -127,6 +127,9 @@ func (x *XdrStream) Close() error {
 func (x *XdrStream) CloseWithoutValidation() error {
 	if x.rdr != nil {
 		if err := x.rdr.Close(); err != nil {
+			if x.rdr2 != nil {
+				x.rdr2.Close()
+			}
 			return err
 		}
 	}

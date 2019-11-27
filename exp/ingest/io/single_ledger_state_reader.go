@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/stellar/go/support/errors"
@@ -166,6 +167,10 @@ func (msr *SingleLedgerStateReader) streamBuckets() {
 	}
 }
 
+func ignoreCloseError(err error) bool {
+	return strings.Contains(err.Error(), "PROTOCOL_ERROR")
+}
+
 // readBucketEntry will attempt to read a bucket entry from `stream`.
 // If any errors are encountered while reading from `stream`, readBucketEntry will
 // retry the operation using a new *historyarchive.XdrStream.
@@ -188,9 +193,11 @@ func (msr *SingleLedgerStateReader) readBucketEntry(stream *historyarchive.XdrSt
 		}
 
 		err = stream.CloseWithoutValidation()
-		if err != nil {
+		if err != nil && !ignoreCloseError(err) {
 			err = errors.Wrap(err, "Error closing stream")
 			break
+		} else {
+			err = nil
 		}
 
 		var retryStream *historyarchive.XdrStream
