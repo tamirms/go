@@ -355,20 +355,6 @@ func (s *ReadBucketEntryTestSuite) TestReadEntryAllRetriesFail() {
 	s.Require().EqualError(err, "Read wrong number of bytes from XDR")
 }
 
-func (s *ReadBucketEntryTestSuite) TestReadEntryRetryFailsWithCloseError() {
-	emptyHash := historyarchive.EmptyXdrArrayHash()
-
-	s.mockArchive.
-		On("GetXdrStreamForHash", emptyHash).
-		Return(createInvalidXdrStream(errors.New("cannot close")), nil).Once()
-
-	stream, err := s.reader.newXDRStream(emptyHash)
-	s.Require().NoError(err)
-
-	_, err = s.reader.readBucketEntry(stream, emptyHash)
-	s.Require().EqualError(err, "Error closing stream: cannot close")
-}
-
 func (s *ReadBucketEntryTestSuite) TestReadEntryRetryIgnoresProtocolCloseError() {
 	emptyHash := historyarchive.EmptyXdrArrayHash()
 
