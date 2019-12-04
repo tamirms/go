@@ -1,22 +1,17 @@
 package processors
 
 import (
-	"github.com/stellar/go/exp/orderbook"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/xdr"
 )
 
 type OfferStore struct {
-	batch          history.OffersBatchInsertBuilder
-	orderbookGraph *orderbook.OrderBookGraph
+	batch history.OffersBatchInsertBuilder
 }
 
-func NewOfferStore(
-	dataQ history.QOffers,
-	orderbookGraph *orderbook.OrderBookGraph,
-) OfferStore {
-	return OfferStore{dataQ.NewOffersBatchInsertBuilder(maxBatchSize), orderbookGraph}
+func NewOfferStore(dataQ history.QOffers) OfferStore {
+	return OfferStore{dataQ.NewOffersBatchInsertBuilder(maxBatchSize)}
 }
 
 func (s OfferStore) Add(entryChange xdr.LedgerEntryChange) error {
@@ -25,8 +20,6 @@ func (s OfferStore) Add(entryChange xdr.LedgerEntryChange) error {
 	}
 
 	offer := entryChange.MustState().Data.MustOffer()
-	s.orderbookGraph.AddOffer(offer)
-
 	err := s.batch.Add(
 		offer,
 		entryChange.MustState().LastModifiedLedgerSeq,

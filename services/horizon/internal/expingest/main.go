@@ -171,8 +171,10 @@ func NewSystem(config Config) (*System, error) {
 			processors.NewAccountStore(historyQ),
 			processors.NewAccountDataStore(historyQ),
 			processors.NewAccountSignerStore(historyQ),
-			processors.NewOfferStore(historyQ, config.OrderBookGraph),
-			processors.NewTrustLineStore(historyQ, historyQ),
+			processors.NewOfferStore(historyQ),
+			processors.NewOrderbookStore(config.OrderBookGraph),
+			processors.NewTrustLineStore(historyQ),
+			processors.NewAssetStatsStore(historyQ),
 		},
 
 		session:                  session,

@@ -7,19 +7,14 @@ import (
 )
 
 type TrustLineStore struct {
-	batch       history.TrustLinesBatchInsertBuilder
-	assetStats  AssetStatSet
-	assetStatsQ history.QAssetStats
+	batch history.TrustLinesBatchInsertBuilder
 }
 
 func NewTrustLineStore(
 	dataQ history.QTrustLines,
-	assetStatsQ history.QAssetStats,
 ) TrustLineStore {
 	return TrustLineStore{
-		batch:       dataQ.NewTrustLinesBatchInsertBuilder(maxBatchSize),
-		assetStats:  AssetStatSet{},
-		assetStatsQ: assetStatsQ,
+		batch: dataQ.NewTrustLinesBatchInsertBuilder(maxBatchSize),
 	}
 }
 
@@ -29,12 +24,7 @@ func (s TrustLineStore) Add(entryChange xdr.LedgerEntryChange) error {
 	}
 
 	trustline := entryChange.MustState().Data.MustTrustLine()
-	err := s.assetStats.Add(trustline)
-	if err != nil {
-		return errors.Wrap(err, "Error adding trustline to asset stats set")
-	}
-
-	err = s.batch.Add(
+	err := s.batch.Add(
 		trustline,
 		entryChange.MustState().LastModifiedLedgerSeq,
 	)
@@ -46,10 +36,5 @@ func (s TrustLineStore) Add(entryChange xdr.LedgerEntryChange) error {
 }
 
 func (s TrustLineStore) Flush() error {
-	err := s.batch.Exec()
-	if err == nil {
-		err = s.assetStatsQ.InsertAssetStats(s.assetStats.All(), maxBatchSize)
-	}
-
-	return err
+	return s.batch.Exec()
 }
