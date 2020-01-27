@@ -68,10 +68,7 @@ func (r *changeReader) getNextFeeChange() (Change, error) {
 			}
 		}
 
-		var changes []Change
-		for _, change := range transaction.GetFeeChanges() {
-			changes = append(changes, change)
-		}
+		changes := transaction.GetFeeChanges()
 		if len(changes) >= 1 {
 			r.pending = append(r.pending, changes[1:]...)
 			return changes[0], nil
