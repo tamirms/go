@@ -24,17 +24,7 @@ type OperationProcessor struct {
 
 // ProcessLedger process the given ledger
 func (p *OperationProcessor) ProcessLedger(ctx context.Context, store *pipeline.Store, r io.LedgerReader, w io.LedgerWriter) (err error) {
-	defer func() {
-		// io.LedgerReader.Close() returns error if upgrade changes have not
-		// been processed so it's worth checking the error.
-		closeErr := r.Close()
-		// Do not overwrite the previous error
-		if err == nil {
-			err = closeErr
-		}
-	}()
 	defer w.Close()
-	r.IgnoreUpgradeChanges()
 
 	// Exit early if not ingesting into a DB
 	if v := ctx.Value(IngestUpdateDatabase); !(v != nil && v.(bool)) {

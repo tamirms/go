@@ -25,7 +25,7 @@ type changeReader struct {
 	pendingIndex           int
 }
 
-// Ensure DBLedgerReader implements LedgerReader
+// Ensure changeReader implements ChangeReader
 var _ ChangeReader = (*changeReader)(nil)
 
 // NewChangeReader constructs a new ChangeReader instance bound to the given eldger
