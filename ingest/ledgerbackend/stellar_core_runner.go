@@ -15,13 +15,18 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/stellar/go/support/log"
 )
 
 type stellarCoreRunnerInterface interface {
 	catchup(from, to uint32) error
 	runFrom(from uint32, hash string) error
 	getMetaPipe() io.Reader
-	getProcessExitChan() <-chan error
+	// getProcessExitChan returns a channel that closes on process exit
+	getProcessExitChan() <-chan struct{}
+	// getProcessExitError returns an exit error of the process, can be nil
+	getProcessExitError() error
+	setLogger(*log.Entry)
 	close() error
 }
 
@@ -36,12 +41,17 @@ type stellarCoreRunner struct {
 	shutdown chan struct{}
 
 	cmd *exec.Cmd
+
 	// processExit channel receives an error when the process exited with an error
 	// or nil if the process exited without an error.
-	processExit chan error
-	metaPipe    io.Reader
-	tempDir     string
-	nonce       string
+	processExit      chan struct{}
+	processExitError error
+	metaPipe         io.Reader
+	tempDir          string
+	nonce            string
+
+	// Optionally, logging can be done to something other than stdout.
+	Log *log.Entry
 }
 
 func newStellarCoreRunner(executablePath, configPath, networkPassphrase string, historyURLs []string) (*stellarCoreRunner, error) {
@@ -61,7 +71,8 @@ func newStellarCoreRunner(executablePath, configPath, networkPassphrase string, 
 		networkPassphrase: networkPassphrase,
 		historyURLs:       historyURLs,
 		shutdown:          make(chan struct{}),
-		processExit:       make(chan error),
+		processExit:       make(chan struct{}),
+		processExitError:  nil,
 		tempDir:           tempDir,
 		nonce:             fmt.Sprintf("captive-stellar-core-%x", r.Uint64()),
 	}
@@ -106,22 +117,52 @@ func (r *stellarCoreRunner) getConfFileName() string {
 	return filepath.Join(r.tempDir, "stellar-core.conf")
 }
 
-func (*stellarCoreRunner) getLogLineWriter() io.Writer {
-	r, w := io.Pipe()
-	br := bufio.NewReader(r)
+func (r *stellarCoreRunner) getLogLineWriter() io.Writer {
+	rd, wr := io.Pipe()
+	br := bufio.NewReader(rd)
+
 	// Strip timestamps from log lines from captive stellar-core. We emit our own.
 	dateRx := regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3} `)
 	go func() {
+		levelRx := regexp.MustCompile(`G[A-Z]{4} \[(\w+) ([A-Z]+)\] (.*)`)
 		for {
 			line, err := br.ReadString('\n')
 			if err != nil {
 				break
 			}
 			line = dateRx.ReplaceAllString(line, "")
-			fmt.Print(line)
+
+			// If there's a logger, we attempt to extract metadata about the log
+			// entry, then redirect it to the logger. Otherwise, we just use stdout.
+			if r.Log == nil {
+				fmt.Print(line)
+				continue
+			}
+
+			matches := levelRx.FindStringSubmatch(line)
+			if len(matches) >= 4 {
+				// Extract the substrings from the log entry and trim it
+				category, level := matches[1], matches[2]
+				line = matches[3]
+
+				levelMapping := map[string]func(string, ...interface{}){
+					"FATAL":   r.Log.Errorf,
+					"ERROR":   r.Log.Errorf,
+					"WARNING": r.Log.Warnf,
+					"INFO":    r.Log.Infof,
+				}
+
+				if writer, ok := levelMapping[strings.ToUpper(level)]; ok {
+					writer("%s: %s", category, line)
+				} else {
+					r.Log.Infof(line)
+				}
+			} else {
+				r.Log.Infof(line)
+			}
 		}
 	}()
-	return w
+	return wr
 }
 
 // Makes the temp directory and writes the config file to it; called by the
@@ -180,9 +221,6 @@ func (r *stellarCoreRunner) catchup(from, to uint32) error {
 	}
 	r.started = true
 
-	// Do not remove bufio.Reader wrapping. Turns out that each read from a pipe
-	// adds an overhead time so it's better to preload data to a buffer.
-	r.metaPipe = bufio.NewReaderSize(r.metaPipe, 1024*1024)
 	return nil
 }
 
@@ -191,13 +229,17 @@ func (r *stellarCoreRunner) runFrom(from uint32, hash string) error {
 		return errors.New("runner already started")
 	}
 	var err error
-	r.cmd, err = r.createCmd(
+	args := []string{
 		"run",
 		"--in-memory",
 		"--start-at-ledger", fmt.Sprintf("%d", from),
-		"--start-at-hash", hash,
 		"--metadata-output-stream", r.getPipeName(),
-	)
+	}
+	if hash != "" {
+		args = append(args, "--start-at-hash", hash)
+	}
+
+	r.cmd, err = r.createCmd(args...)
 	if err != nil {
 		return errors.Wrap(err, "error creating `stellar-core run` subprocess")
 	}
@@ -207,9 +249,6 @@ func (r *stellarCoreRunner) runFrom(from uint32, hash string) error {
 	}
 	r.started = true
 
-	// Do not remove bufio.Reader wrapping. Turns out that each read from a pipe
-	// adds an overhead time so it's better to preload data to a buffer.
-	r.metaPipe = bufio.NewReaderSize(r.metaPipe, 1024*1024)
 	return nil
 }
 
@@ -217,8 +256,16 @@ func (r *stellarCoreRunner) getMetaPipe() io.Reader {
 	return r.metaPipe
 }
 
-func (r *stellarCoreRunner) getProcessExitChan() <-chan error {
+func (r *stellarCoreRunner) getProcessExitChan() <-chan struct{} {
 	return r.processExit
+}
+
+func (r *stellarCoreRunner) getProcessExitError() error {
+	return r.processExitError
+}
+
+func (r *stellarCoreRunner) setLogger(logger *log.Entry) {
+	r.Log = logger
 }
 
 func (r *stellarCoreRunner) close() error {
