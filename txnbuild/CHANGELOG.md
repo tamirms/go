@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this
 file.  This project adheres to [Semantic Versioning](http://semver.org/).
 
-## [v4.2.0](https://github.com/stellar/go/releases/tag/horizonclient-v4.2.0) - 2020-11-06
+## [v4.2.0](https://github.com/stellar/go/releases/tag/horizonclient-v4.2.0) - 2020-11-11
 
 * Add `HashHex()`, `SignWithKeyString()`, `SignHashX()`, and `AddSignatureBase64()` functions back to `FeeBumpTransaction`  ([#3199](https://github.com/stellar/go/pull/3199)).
 
