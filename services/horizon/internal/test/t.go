@@ -137,16 +137,7 @@ func (t *T) UnmarshalExtras(r io.Reader) map[string]string {
 func (t *T) LoadLedgerStatus() ledger.Status {
 	var next ledger.Status
 
-	err := t.CoreSession().GetRaw(&next.CoreLatest, `
-		SELECT
-			COALESCE(MAX(ledgerseq), 0)
-		FROM ledgerheaders
-	`)
-	if err != nil {
-		panic(err)
-	}
-
-	err = t.HorizonSession().GetRaw(&next.HistoryElder, `
+	err := t.HorizonSession().GetRaw(&next.HistoryElder, `
 			SELECT
 				COALESCE(MIN(sequence), 0)
 			FROM history_ledgers

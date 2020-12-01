@@ -159,8 +159,8 @@ func initDbMetrics(app *App) {
 	app.coreLatestLedgerCounter = prometheus.NewCounterFunc(
 		prometheus.CounterOpts{Namespace: "horizon", Subsystem: "stellar_core", Name: "latest_ledger"},
 		func() float64 {
-			ls := app.ledgerState.CurrentStatus()
-			return float64(ls.CoreLatest)
+			cs := app.coreSettings.get()
+			return float64(cs.CoreLatest)
 		},
 	)
 	app.prometheusRegistry.MustRegister(app.coreLatestLedgerCounter)

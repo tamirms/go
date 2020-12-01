@@ -10,9 +10,11 @@ import (
 )
 
 type CoreSettings struct {
+	CoreLatest                   int32
 	CurrentProtocolVersion       int32
 	CoreSupportedProtocolVersion int32
 	CoreVersion                  string
+	CoreSynced                   bool
 }
 
 type CoreSettingsGetter interface {
@@ -44,6 +46,8 @@ func (handler GetRootHandler) GetResource(w HeaderWriter, r *http.Request) (inte
 		handler.HorizonVersion,
 		coreSettings.CoreVersion,
 		handler.NetworkPassphrase,
+		coreSettings.CoreSynced,
+		coreSettings.CoreLatest,
 		coreSettings.CurrentProtocolVersion,
 		coreSettings.CoreSupportedProtocolVersion,
 		handler.FriendbotURL,

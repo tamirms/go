@@ -219,18 +219,20 @@ func recoverMiddleware(h http.Handler) http.Handler {
 // NewHistoryMiddleware adds session to the request context and ensures Horizon
 // is not in a stale state, which is when the difference between latest core
 // ledger and latest history ledger is higher than the given threshold
-func NewHistoryMiddleware(ledgerState *ledger.State, staleThreshold int32, session *db.Session) func(http.Handler) http.Handler {
+func NewHistoryMiddleware(coreSettings actions.CoreSettingsGetter, ledgerState *ledger.State, staleThreshold int32, session *db.Session) func(http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if staleThreshold > 0 {
 				ls := ledgerState.CurrentStatus()
-				isStale := !ls.Synced || (ls.CoreLatest-ls.HistoryLatest) > int32(staleThreshold)
+				cs := coreSettings.GetCoreSettings()
+				isStale := !cs.CoreSynced || (cs.CoreLatest-ls.HistoryLatest) > int32(staleThreshold)
 				if isStale {
 					err := hProblem.StaleHistory
 					err.Extras = map[string]interface{}{
 						"history_latest_ledger": ls.HistoryLatest,
-						"core_latest_ledger":    ls.CoreLatest,
+						"core_latest_ledger":    cs.CoreLatest,
+						"core_synced":           cs.CoreSynced,
 					}
 					problem.Render(r.Context(), w, err)
 					return

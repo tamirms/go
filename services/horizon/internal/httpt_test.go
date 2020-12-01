@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"testing"
 
+	proto "github.com/stellar/go/protocols/stellarcore"
 	"github.com/stellar/go/services/horizon/internal/test"
 )
 
@@ -42,6 +43,11 @@ func startHTTPTest(t *testing.T, scenario string) *HTTPT {
 
 	ret.App.config.StellarCoreURL = ret.coreServer.URL
 	ret.App.UpdateLedgerState()
+	infoResponse := &proto.InfoResponse{}
+	infoResponse.Info.Ledger.Num = 64
+	infoResponse.Info.ProtocolVersion = 4
+	infoResponse.Info.State = "Synced!"
+	ret.App.coreSettings.set(infoResponse)
 
 	return ret
 }

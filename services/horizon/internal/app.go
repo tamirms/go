@@ -40,12 +40,20 @@ type coreSettingsStore struct {
 	actions.CoreSettings
 }
 
+func (c *coreSettingsStore) setNotSynced() {
+	c.Lock()
+	defer c.Unlock()
+	c.CoreSynced = false
+}
+
 func (c *coreSettingsStore) set(resp *proto.InfoResponse) {
 	c.Lock()
 	defer c.Unlock()
 	c.CoreVersion = resp.Info.Build
 	c.CurrentProtocolVersion = int32(resp.Info.Ledger.Version)
 	c.CoreSupportedProtocolVersion = int32(resp.Info.ProtocolVersion)
+	c.CoreLatest = int32(resp.Info.Ledger.Num)
+	c.CoreSynced = resp.IsSynced()
 }
 
 func (c *coreSettingsStore) get() actions.CoreSettings {
@@ -211,25 +219,7 @@ func (a *App) UpdateLedgerState() {
 		log.WithStack(err).WithField("err", err.Error()).Error(msg)
 	}
 
-	var coreInfo *proto.InfoResponse
-	var err error
-	for i := 0; i < maxUpdateLedgerStateAttempts; i++ {
-		coreInfo, err = a.getCoreInfo()
-		if err != nil {
-			logErr(err, "failed to load the stellar-core info")
-		} else {
-			break
-		}
-	}
-	if err != nil {
-		log.Warnf("failed to obtain stellar-core info after %v retries", maxUpdateLedgerStateAttempts)
-		a.ledgerState.SetNotSynced()
-		return
-	}
-
-	next.CoreLatest = int32(coreInfo.Info.Ledger.Num)
-
-	err = a.HistoryQ().LatestLedger(&next.HistoryLatest)
+	err := a.HistoryQ().LatestLedger(&next.HistoryLatest)
 	if err != nil {
 		logErr(err, "failed to load the latest known ledger state from history DB")
 		return
@@ -246,8 +236,6 @@ func (a *App) UpdateLedgerState() {
 		logErr(err, "failed to load the oldest known exp ledger state from history DB")
 		return
 	}
-
-	next.Synced = coreInfo.IsSynced()
 
 	a.ledgerState.SetStatus(next)
 }
@@ -380,24 +368,35 @@ func (a *App) UpdateStellarCoreInfo() {
 		return
 	}
 
-	resp, err := a.getCoreInfo()
+	var coreInfo *proto.InfoResponse
+	var err error
+	for i := 0; i < maxUpdateLedgerStateAttempts; i++ {
+		coreInfo, err = a.getCoreInfo()
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
-		log.Warnf("could not load stellar-core info: %s", err)
+		log.WithField("err", err.Error()).Warnf(
+			"failed to obtain stellar-core info after %v retries",
+			maxUpdateLedgerStateAttempts,
+		)
+		a.coreSettings.setNotSynced()
 		return
 	}
 
 	// Check if NetworkPassphrase is different, if so exit Horizon as it can break the
 	// state of the application.
-	if resp.Info.Network != a.config.NetworkPassphrase {
+	if coreInfo.Info.Network != a.config.NetworkPassphrase {
 		log.Errorf(
 			"Network passphrase of stellar-core (%s) does not match Horizon configuration (%s). Exiting...",
-			resp.Info.Network,
+			coreInfo.Info.Network,
 			a.config.NetworkPassphrase,
 		)
 		os.Exit(1)
 	}
 
-	a.coreSettings.set(resp)
+	a.coreSettings.set(coreInfo)
 }
 
 // DeleteUnretainedHistory forwards to the app's reaper.  See
@@ -508,7 +507,7 @@ func (a *App) init() error {
 			KeyPath:  a.config.TLSKey,
 		}
 	}
-	a.webServer, err = httpx.NewServer(config, routerConfig, a.ledgerState)
+	a.webServer, err = httpx.NewServer(config, routerConfig, a, a.ledgerState)
 	if err != nil {
 		return err
 	}

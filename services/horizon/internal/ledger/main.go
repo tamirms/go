@@ -12,11 +12,9 @@ import (
 // Status represents a snapshot of both horizon's and stellar-core's view of the
 // ledger.
 type Status struct {
-	CoreLatest       int32
 	HistoryLatest    int32
 	HistoryElder     int32
 	ExpHistoryLatest uint32
-	Synced           bool
 }
 
 // State is an in-memory data structure which holds a snapshot of both
@@ -32,13 +30,6 @@ func (c *State) CurrentStatus() Status {
 	defer c.RUnlock()
 	ret := c.current
 	return ret
-}
-
-// SetNotSynced updates the ledger state to indicate that Stellar Core is not synced with the network
-func (c *State) SetNotSynced() {
-	c.Lock()
-	defer c.Unlock()
-	c.current.Synced = false
 }
 
 // SetStatus updates the cached snapshot of the ledger state

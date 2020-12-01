@@ -49,7 +49,7 @@ type Router struct {
 	Internal *chi.Mux
 }
 
-func NewRouter(config *RouterConfig, serverMetrics *ServerMetrics, ledgerState *ledger.State) (*Router, error) {
+func NewRouter(config *RouterConfig, serverMetrics *ServerMetrics, coreSettings actions.CoreSettingsGetter, ledgerState *ledger.State) (*Router, error) {
 	result := Router{
 		Mux:      chi.NewMux(),
 		Internal: chi.NewMux(),
@@ -63,7 +63,7 @@ func NewRouter(config *RouterConfig, serverMetrics *ServerMetrics, ledgerState *
 		}
 	}
 	result.addMiddleware(config, rateLimiter, serverMetrics)
-	result.addRoutes(config, rateLimiter, ledgerState)
+	result.addRoutes(config, rateLimiter, coreSettings, ledgerState)
 	return &result, nil
 }
 
@@ -99,7 +99,7 @@ func (r *Router) addMiddleware(config *RouterConfig,
 	r.Internal.Use(loggerMiddleware(serverMetrics))
 }
 
-func (r *Router) addRoutes(config *RouterConfig, rateLimiter *throttled.HTTPRateLimiter, ledgerState *ledger.State) {
+func (r *Router) addRoutes(config *RouterConfig, rateLimiter *throttled.HTTPRateLimiter, coreSettings actions.CoreSettingsGetter, ledgerState *ledger.State) {
 	stateMiddleware := StateMiddleware{
 		HorizonSession: config.DBSession,
 	}
@@ -117,7 +117,7 @@ func (r *Router) addRoutes(config *RouterConfig, rateLimiter *throttled.HTTPRate
 		LedgerSourceFactory: historyLedgerSourceFactory{ledgerState: ledgerState, updateFrequency: config.SSEUpdateFrequency},
 	}
 
-	historyMiddleware := NewHistoryMiddleware(ledgerState, int32(config.StaleThreshold), config.DBSession)
+	historyMiddleware := NewHistoryMiddleware(coreSettings, ledgerState, int32(config.StaleThreshold), config.DBSession)
 
 	// State endpoints behind stateMiddleware
 	r.Group(func(r chi.Router) {

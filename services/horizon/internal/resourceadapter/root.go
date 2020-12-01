@@ -17,6 +17,8 @@ func PopulateRoot(
 	ledgerState ledger.Status,
 	hVersion, cVersion string,
 	passphrase string,
+	coreSynced bool,
+	coreLatestSequence int32,
 	currentProtocolVersion int32,
 	coreSupportedProtocolVersion int32,
 	friendBotURL *url.URL,
@@ -25,13 +27,13 @@ func PopulateRoot(
 	dest.IngestSequence = ledgerState.ExpHistoryLatest
 	dest.HorizonSequence = ledgerState.HistoryLatest
 	dest.HistoryElderSequence = ledgerState.HistoryElder
-	dest.CoreSequence = ledgerState.CoreLatest
+	dest.CoreSequence = coreLatestSequence
 	dest.HorizonVersion = hVersion
 	dest.StellarCoreVersion = cVersion
 	dest.NetworkPassphrase = passphrase
 	dest.CurrentProtocolVersion = currentProtocolVersion
 	dest.CoreSupportedProtocolVersion = coreSupportedProtocolVersion
-	dest.CoreSynced = ledgerState.Synced
+	dest.CoreSynced = coreSynced
 
 	lb := hal.LinkBuilder{Base: horizonContext.BaseURL(ctx)}
 	if friendBotURL != nil {
