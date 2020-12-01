@@ -318,6 +318,7 @@ type Root struct {
 	NetworkPassphrase            string `json:"network_passphrase"`
 	CurrentProtocolVersion       int32  `json:"current_protocol_version"`
 	CoreSupportedProtocolVersion int32  `json:"core_supported_protocol_version"`
+	CoreSynced                   bool   `json:"core_synced"`
 }
 
 // Signer represents one of an account's signers.
