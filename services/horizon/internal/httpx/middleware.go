@@ -225,7 +225,7 @@ func NewHistoryMiddleware(ledgerState *ledger.State, staleThreshold int32, sessi
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if staleThreshold > 0 {
 				ls := ledgerState.CurrentStatus()
-				isStale := (ls.CoreLatest - ls.HistoryLatest) > int32(staleThreshold)
+				isStale := !ls.Synced || (ls.CoreLatest-ls.HistoryLatest) > int32(staleThreshold)
 				if isStale {
 					err := hProblem.StaleHistory
 					err.Extras = map[string]interface{}{

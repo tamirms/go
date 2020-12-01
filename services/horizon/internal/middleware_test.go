@@ -347,6 +347,7 @@ func TestCheckHistoryStaleMiddleware(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			state := ledger.Status{
+				Synced:        true,
 				CoreLatest:    testCase.coreLatest,
 				HistoryLatest: testCase.historyLatest,
 			}

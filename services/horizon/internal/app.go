@@ -30,6 +30,11 @@ import (
 	"github.com/stellar/go/support/log"
 )
 
+const (
+	infoRequestTimeout           = time.Millisecond * 500
+	maxUpdateLedgerStateAttempts = 3
+)
+
 type coreSettingsStore struct {
 	sync.RWMutex
 	actions.CoreSettings
@@ -187,6 +192,16 @@ func (a *App) HorizonSession(ctx context.Context) *db.Session {
 	return &db.Session{DB: a.historyQ.Session.DB, Ctx: ctx}
 }
 
+func (a *App) getCoreInfo() (*proto.InfoResponse, error) {
+	coreClient := &stellarcore.Client{
+		HTTP: http.DefaultClient,
+		URL:  a.config.StellarCoreURL,
+	}
+	ctx, cancel := context.WithTimeout(a.ctx, infoRequestTimeout)
+	defer cancel()
+	return coreClient.Info(ctx)
+}
+
 // UpdateLedgerState triggers a refresh of several metrics gauges, such as open
 // db connections and ledger state
 func (a *App) UpdateLedgerState() {
@@ -196,16 +211,22 @@ func (a *App) UpdateLedgerState() {
 		log.WithStack(err).WithField("err", err.Error()).Error(msg)
 	}
 
-	coreClient := &stellarcore.Client{
-		HTTP: http.DefaultClient,
-		URL:  a.config.StellarCoreURL,
+	var coreInfo *proto.InfoResponse
+	var err error
+	for i := 0; i < maxUpdateLedgerStateAttempts; i++ {
+		coreInfo, err = a.getCoreInfo()
+		if err != nil {
+			logErr(err, "failed to load the stellar-core info")
+		} else {
+			break
+		}
 	}
-
-	coreInfo, err := coreClient.Info(a.ctx)
 	if err != nil {
-		logErr(err, "failed to load the stellar-core info")
+		log.Warnf("failed to obtain stellar-core info after %v retries", maxUpdateLedgerStateAttempts)
+		a.ledgerState.SetNotSynced()
 		return
 	}
+
 	next.CoreLatest = int32(coreInfo.Info.Ledger.Num)
 
 	err = a.HistoryQ().LatestLedger(&next.HistoryLatest)
@@ -225,6 +246,8 @@ func (a *App) UpdateLedgerState() {
 		logErr(err, "failed to load the oldest known exp ledger state from history DB")
 		return
 	}
+
+	next.Synced = coreInfo.IsSynced()
 
 	a.ledgerState.SetStatus(next)
 }
@@ -357,11 +380,7 @@ func (a *App) UpdateStellarCoreInfo() {
 		return
 	}
 
-	core := &stellarcore.Client{
-		URL: a.config.StellarCoreURL,
-	}
-
-	resp, err := core.Info(context.Background())
+	resp, err := a.getCoreInfo()
 	if err != nil {
 		log.Warnf("could not load stellar-core info: %s", err)
 		return
