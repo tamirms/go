@@ -17,6 +17,7 @@ my_fuzz_target:
     - cd xdr/fuzz/jsonclaimpredicate
     - go-fuzz-build -libfuzzer -o my_fuzz_target.a .
     - clang -fsanitize=fuzzer my_fuzz_target.a -o my_fuzz_target
-    - ./gitlab-cov-fuzz run --regression=$REGRESSION -- ./my_fuzz_target || true
+    - ls ../../../
+    - ../../../gitlab-cov-fuzz run --regression=$REGRESSION -- ./my_fuzz_target || true
 
 # test MR widget
