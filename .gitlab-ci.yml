@@ -5,11 +5,10 @@ stages:
 
 include:
   - template: Coverage-Fuzzing.gitlab-ci.yml
-  - template: SAST.gitlab-ci.yml
 
 my_fuzz_target:
   extends: .fuzz_base
-  image: golang:latest
+  image: golang:1.15.8
   variables:
     COVFUZZ_SEED_CORPUS: './xdr/fuzz/jsonclaimpredicate/corpus'
   script:
