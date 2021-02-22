@@ -10,7 +10,7 @@ my_fuzz_target:
   extends: .fuzz_base
   image: golang:1.15.8
   variables:
-    COVFUZZ_SEED_CORPUS: './xdr/fuzz/jsonclaimpredicate/corpus'
+    COVFUZZ_SEED_CORPUS: './corpus'
   script:
     - apt update && apt install -y clang
     - go get -u github.com/dvyukov/go-fuzz/go-fuzz github.com/dvyukov/go-fuzz/go-fuzz-build
