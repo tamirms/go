@@ -65,7 +65,7 @@ type claimPredicateJSON struct {
 	Or            *[]claimPredicateJSON `json:"or,omitempty"`
 	Not           *claimPredicateJSON   `json:"not,omitempty"`
 	Unconditional bool                  `json:"unconditional,omitempty"`
-	AbsBefore     *time.Time            `json:"abs_before,omitempty"`
+	AbsBefore     *iso8601Time          `json:"abs_before,omitempty"`
 	RelBefore     *int64                `json:"rel_before,string,omitempty"`
 }
 
@@ -152,8 +152,8 @@ func (c ClaimPredicate) toJSON() (claimPredicateJSON, error) {
 		payload.Not = new(claimPredicateJSON)
 		*payload.Not, err = c.MustNotPredicate().toJSON()
 	case ClaimPredicateTypeClaimPredicateBeforeAbsoluteTime:
-		payload.AbsBefore = new(time.Time)
-		*payload.AbsBefore = time.Unix(int64(c.MustAbsBefore()), 0).UTC()
+		payload.AbsBefore = new(iso8601Time)
+		*payload.AbsBefore = iso8601Time{time.Unix(int64(c.MustAbsBefore()), 0).UTC()}
 	case ClaimPredicateTypeClaimPredicateBeforeRelativeTime:
 		payload.RelBefore = new(int64)
 		*payload.RelBefore = int64(c.MustRelBefore())
