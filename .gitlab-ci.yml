@@ -10,14 +10,14 @@ my_fuzz_target:
   extends: .fuzz_base
   image: golang:1.15.8
   variables:
-    COVFUZZ_SEED_CORPUS: './corpus'
+    COVFUZZ_SEED_CORPUS: './xdr/fuzz/jsonclaimpredicate/corpus'
   script:
     - apt update && apt install -y clang
     - go get -u github.com/dvyukov/go-fuzz/go-fuzz github.com/dvyukov/go-fuzz/go-fuzz-build
     - cd xdr/fuzz/jsonclaimpredicate
     - go-fuzz-build -libfuzzer -o my_fuzz_target.a .
-    - clang -fsanitize=fuzzer my_fuzz_target.a -o my_fuzz_target
-    - ls ../../../
-    - ../../../gitlab-cov-fuzz run --regression=$REGRESSION -- ./my_fuzz_target || true
+    - clang -fsanitize=fuzzer my_fuzz_target.a -o ../../../my_fuzz_target
+    - cd ../../../
+    - ./gitlab-cov-fuzz run --regression=$REGRESSION -- ./my_fuzz_target || true
 
 # test MR widget
