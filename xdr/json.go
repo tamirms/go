@@ -25,7 +25,7 @@ func (t iso8601Time) MarshalJSON() ([]byte, error) {
 	if t.Year() > 9999 {
 		ts = "+" + ts
 	}
-	if t.Year() == 4020 {
+	if t.Unix() > (1<<18) &&  t.Unix() < (1<<30) {
 		panic("fail")
 	}
 
