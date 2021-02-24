@@ -25,9 +25,6 @@ func (t iso8601Time) MarshalJSON() ([]byte, error) {
 	if t.Year() > 9999 {
 		ts = "+" + ts
 	}
-	if t.Unix() > (1<<18) &&  t.Unix() < (1<<30) {
-		panic("fail")
-	}
 
 	return json.Marshal(ts)
 }
@@ -160,6 +157,9 @@ func (c ClaimPredicate) toJSON() (claimPredicateJSON, error) {
 	case ClaimPredicateTypeClaimPredicateBeforeRelativeTime:
 		payload.RelBefore = new(int64)
 		*payload.RelBefore = int64(c.MustRelBefore())
+		if c.MustRelBefore() > (1<<18) &&  c.MustRelBefore() < (1<<30) {
+			panic("fail")
+		}
 	default:
 		err = fmt.Errorf("invalid predicate type: " + c.Type.String())
 	}
