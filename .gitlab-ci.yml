@@ -20,5 +20,7 @@ my_fuzz_target:
     - clang -fsanitize=fuzzer my_fuzz_target.a -o ../../../my_fuzz_target
     - cd ../../../
     - timeout --preserve-status --signal=INT 200s ./gitlab-cov-fuzz run --regression=$REGRESSION -- ./my_fuzz_target
+    - echo $?
+    - echo "done"
 
 # test MR widget
