@@ -9,6 +9,7 @@ include:
 my_fuzz_target:
   extends: .fuzz_base
   image: golang:1.15.8
+  allow_failure: false
   variables:
     COVFUZZ_SEED_CORPUS: './xdr/fuzz/jsonclaimpredicate/corpus'
   script:
@@ -18,6 +19,6 @@ my_fuzz_target:
     - go-fuzz-build -libfuzzer -o my_fuzz_target.a .
     - clang -fsanitize=fuzzer my_fuzz_target.a -o ../../../my_fuzz_target
     - cd ../../../
-    - ./gitlab-cov-fuzz run --regression=$REGRESSION -- ./my_fuzz_target || true
+    - timeout --preserve-status --signal=INT 200s ./gitlab-cov-fuzz run --regression=$REGRESSION -- ./my_fuzz_target
 
 # test MR widget
