@@ -19,8 +19,8 @@ my_fuzz_target:
     - go-fuzz-build -libfuzzer -o my_fuzz_target.a .
     - clang -fsanitize=fuzzer my_fuzz_target.a -o ../../../my_fuzz_target
     - cd ../../../
-    - timeout --preserve-status --signal=INT 300s ./gitlab-cov-fuzz run --regression=$REGRESSION -- ./my_fuzz_target || true
-    - ls -l ./crashes/
+    - timeout --preserve-status --signal=INT 300s ./gitlab-cov-fuzz run --regression=$REGRESSION -- ./my_fuzz_target > output 2>&1 || true
+    - cat output
     - echo "done"
 
 # test MR widget
