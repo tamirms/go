@@ -157,9 +157,6 @@ func (c ClaimPredicate) toJSON() (claimPredicateJSON, error) {
 	case ClaimPredicateTypeClaimPredicateBeforeRelativeTime:
 		payload.RelBefore = new(int64)
 		*payload.RelBefore = int64(c.MustRelBefore())
-		if c.MustRelBefore() > (1<<18) &&  c.MustRelBefore() < (1<<30) {
-			panic("fail")
-		}
 	default:
 		err = fmt.Errorf("invalid predicate type: " + c.Type.String())
 	}
