@@ -12,6 +12,12 @@ import (
 	"github.com/stellar/go/support/log"
 )
 
+func newUint(v uint) *uint {
+	p := new(uint)
+	*p = v
+	return p
+}
+
 func TestGenerateConfig(t *testing.T) {
 	for _, testCase := range []struct {
 		name         string
@@ -39,36 +45,36 @@ func TestGenerateConfig(t *testing.T) {
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			stellarCoreRunner, err := newStellarCoreRunner(CaptiveCoreConfig{
-				HTTPPort:           6789,
-				HistoryArchiveURLs: []string{"http://localhost:1170"},
-				Log:                log.New(),
-				ConfigAppendPath:   testCase.appendPath,
-				StoragePath:        "./test-temp-dir",
-				PeerPort:           12345,
-				Context:            context.Background(),
+			captiveCoreToml, err := NewCaptiveCoreToml(CaptiveCoreTomlParams{
+				ConfigPath:         testCase.appendPath,
+				Strict:             true,
 				NetworkPassphrase:  "Public Global Stellar Network ; September 2015",
-			}, testCase.mode)
+				HistoryArchiveURLs: []string{"http://localhost:1170"},
+				HTTPPort:           newUint(6789),
+				PeerPort:           newUint(12345),
+			})
 			assert.NoError(t, err)
 
-			config, err := stellarCoreRunner.generateConfig()
+			configBytes, err := generateConfig(captiveCoreToml, testCase.mode)
 			assert.NoError(t, err)
 
 			expectedByte, err := ioutil.ReadFile(testCase.expectedPath)
 			assert.NoError(t, err)
 
-			assert.Equal(t, config, string(expectedByte))
-
-			assert.NoError(t, stellarCoreRunner.close())
+			assert.Equal(t, string(configBytes), string(expectedByte))
 		})
 	}
 }
 
 func TestCloseBeforeStart(t *testing.T) {
+	captiveCoreToml, err := NewCaptiveCoreToml(CaptiveCoreTomlParams{})
+	assert.NoError(t, err)
+
 	runner, err := newStellarCoreRunner(CaptiveCoreConfig{
 		HistoryArchiveURLs: []string{"http://localhost"},
 		Log:                log.New(),
 		Context:            context.Background(),
+		Toml:               captiveCoreToml,
 	}, stellarCoreRunnerModeOffline)
 	assert.NoError(t, err)
 

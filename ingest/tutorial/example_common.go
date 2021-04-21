@@ -9,8 +9,8 @@ import (
 var (
 	config = ledgerbackend.CaptiveCoreConfig{
 		// Change these based on your environment:
-		BinaryPath:        "/usr/local/bin/stellar-core",
-		ConfigAppendPath:  "stellar-core-stub.toml",
+		BinaryPath: "/usr/local/bin/stellar-core",
+		// TODO configure TOML
 		NetworkPassphrase: "Test SDF Network ; September 2015",
 		HistoryArchiveURLs: []string{
 			"https://history.stellar.org/prd/core-testnet/core_testnet_001",

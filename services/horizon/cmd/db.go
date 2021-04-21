@@ -249,7 +249,10 @@ func RunDBReingestRange(from, to uint32, reingestForce bool, parallelWorkers uin
 		EnableCaptiveCore:           config.EnableCaptiveCoreIngestion,
 		CaptiveCoreBinaryPath:       config.CaptiveCoreBinaryPath,
 		RemoteCaptiveCoreURL:        config.RemoteCaptiveCoreURL,
-		CaptiveCoreConfigAppendPath: config.CaptiveCoreConfigAppendPath,
+		CaptiveCoreToml:             config.CaptiveCoreToml,
+		CaptiveCoreStoragePath:      config.CaptiveCoreStoragePath,
+		StellarCoreCursor:           config.CursorName,
+		StellarCoreURL:              config.StellarCoreURL,
 	}
 
 	if !ingestConfig.EnableCaptiveCore {

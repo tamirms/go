@@ -52,6 +52,9 @@ func TestConfigOption_getSimpleValue_defaults(t *testing.T) {
 	assert.Equal(t, true, opts.Bool)
 	assert.Equal(t, uint(2), opts.Uint)
 	assert.Equal(t, uint32(3), opts.Uint32)
+	for _, opt := range configOpts {
+		assert.False(t, opt.flag.Changed)
+	}
 }
 
 // Test that when args are given, their values are used.
@@ -86,6 +89,9 @@ func TestConfigOption_getSimpleValue_setFlag(t *testing.T) {
 	assert.Equal(t, true, opts.Bool)
 	assert.Equal(t, uint(20), opts.Uint)
 	assert.Equal(t, uint32(30), opts.Uint32)
+	for _, opt := range configOpts {
+		assert.True(t, opt.flag.Changed)
+	}
 }
 
 // Test that when args are not given but env vars are, their values are used.
