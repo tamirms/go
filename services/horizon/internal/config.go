@@ -20,6 +20,7 @@ type Config struct {
 	EnableCaptiveCoreIngestion bool
 	CaptiveCoreBinaryPath      string
 	RemoteCaptiveCoreURL       string
+	CaptiveCoreConfigPath      string
 	CaptiveCoreTomlParams      ledgerbackend.CaptiveCoreTomlParams
 	CaptiveCoreToml            *ledgerbackend.CaptiveCoreToml
 	CaptiveCoreStoragePath     string

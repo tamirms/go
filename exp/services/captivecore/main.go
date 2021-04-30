@@ -21,7 +21,7 @@ import (
 
 func main() {
 	var port int
-	var networkPassphrase, binaryPath, dbURL string
+	var networkPassphrase, binaryPath, configPath, dbURL string
 	var captiveCoreTomlParams ledgerbackend.CaptiveCoreTomlParams
 	var historyArchiveURLs []string
 	var checkpointFrequency uint32
@@ -59,7 +59,7 @@ func main() {
 			FlagDefault: "",
 			Required:    true,
 			Usage:       "path to additional configuration for the Stellar Core configuration file used by captive core. It must, at least, include enough details to define a quorum set",
-			ConfigKey:   &captiveCoreTomlParams.ConfigPath,
+			ConfigKey:   &configPath,
 		},
 		&config.ConfigOption{
 			Name:        "history-archive-urls",
@@ -125,7 +125,7 @@ func main() {
 
 			captiveCoreTomlParams.HistoryArchiveURLs = historyArchiveURLs
 			captiveCoreTomlParams.NetworkPassphrase = networkPassphrase
-			captiveCoreToml, err := ledgerbackend.NewCaptiveCoreToml(captiveCoreTomlParams)
+			captiveCoreToml, err := ledgerbackend.NewCaptiveCoreTomlFromFile(configPath, captiveCoreTomlParams)
 			if err != nil {
 				logger.WithError(err).Fatal("Invalid captive core toml")
 			}

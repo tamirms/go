@@ -1,14 +1,16 @@
 package ledgerbackend
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
+	"regexp"
 	"strings"
 
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/xdr"
 
-	"github.com/BurntSushi/toml"
+	"github.com/pelletier/go-toml"
 )
 
 const (
@@ -62,14 +64,14 @@ type captiveCoreTomlValues struct {
 	// and the default is stellar-core.log
 	LogFilePath   string `toml:"LOG_FILE_PATH"`
 	BucketDirPath string `toml:"BUCKET_DIR_PATH,omitempty"`
-	// we cannot omitzero because 0 is a valid configuration for HTTP_PORT
+	// we cannot omitempty because 0 is a valid configuration for HTTP_PORT
 	// and the default is 11626
 	HTTPPort          uint     `toml:"HTTP_PORT"`
 	PublicHTTPPort    bool     `toml:"PUBLIC_HTTP_PORT,omitempty"`
 	NodeNames         []string `toml:"NODE_NAMES,omitempty"`
 	NetworkPassphrase string   `toml:"NETWORK_PASSPHRASE,omitempty"`
-	PeerPort          uint     `toml:"PEER_PORT,omitzero"`
-	// we cannot omitzero because 0 is a valid configuration for FAILURE_SAFETY
+	PeerPort          uint     `toml:"PEER_PORT,omitempty"`
+	// we cannot omitempty because 0 is a valid configuration for FAILURE_SAFETY
 	// and the default is -1
 	FailureSafety                        int                  `toml:"FAILURE_SAFETY"`
 	UnsafeQuorum                         bool                 `toml:"UNSAFE_QUORUM,omitempty"`
@@ -78,17 +80,8 @@ type captiveCoreTomlValues struct {
 	DisableXDRFsync                      bool                 `toml:"DISABLE_XDR_FSYNC,omitempty"`
 	HomeDomains                          []HomeDomain         `toml:"HOME_DOMAINS,omitempty"`
 	Validators                           []Validator          `toml:"VALIDATORS,omitempty"`
-	HistoryEntries                       map[string]History   `toml:"HISTORY,omitempty"`
-	QuorumSetEntries                     map[string]QuorumSet `toml:"QUORUM_SET,omitempty"`
-}
-
-func (c captiveCoreTomlValues) Marshall() ([]byte, error) {
-	var sb strings.Builder
-	sb.WriteString("# Generated file -- do not edit\n")
-	if err := toml.NewEncoder(&sb).Encode(c); err != nil {
-		return nil, errors.Wrap(err, "could not encode toml file")
-	}
-	return []byte(sb.String()), nil
+	HistoryEntries                       map[string]History   `toml:"-"`
+	QuorumSetEntries                     map[string]QuorumSet `toml:"-"`
 }
 
 func (c *captiveCoreTomlValues) QuorumSetIsConfigured() bool {
@@ -109,21 +102,133 @@ func (c *captiveCoreTomlValues) historyIsConfigured() bool {
 
 type CaptiveCoreToml struct {
 	captiveCoreTomlValues
-	metadata toml.MetaData
+	tree      *toml.Tree
+	separator string
 }
 
-func (c *CaptiveCoreToml) Unmarshal(text []byte) error {
-	metadata, err := toml.Decode(string(text), &c.captiveCoreTomlValues)
+// maxConsecutiveChar returns the length of the longest substring of repeating `char` values found in `s`.
+func maxConsecutiveChar(s string, char byte) int {
+	var count, max int
+	for i := range s {
+		if s[i] == char {
+			count++
+		} else {
+			if count > max {
+				max = count
+			}
+			count = 0
+		}
+	}
+	return max
+}
+
+// nonSubstring returns a string which is guaranteed to not be a substring of `text`.
+func nonSubstring(text string) string {
+	return strings.Repeat("-", maxConsecutiveChar(text, '-')+1)
+}
+
+// flattenTables will transform a given toml text by flattening all nested tables
+// whose root can be found in `rootNames`.
+//
+// In the TOML spec dotted keys represents nesting. So we flatten the table key by replacing instances of "."
+// with `separator`. For example:
+//
+// text := `[QUORUM_SET.a.b.c]
+//         THRESHOLD_PERCENT=67
+//         VALIDATORS=["a","b"]`
+// flattenTables(text, []string{"QUORUM_SET"}, "-") ->
+//
+// `[QUORUM_SET-a-b-c]
+// THRESHOLD_PERCENT=67
+// VALIDATORS=["a","b"]`
+func flattenTables(text string, rootNames []string, separator string) string {
+	orExpression := strings.Join(rootNames, "|")
+	re := regexp.MustCompile("\\[(" + orExpression + ")(\\..+)?\\]")
+
+	return re.ReplaceAllStringFunc(text, func(match string) string {
+		return strings.ReplaceAll(match, ".", separator)
+	})
+}
+
+func (c *CaptiveCoreToml) Marshall() ([]byte, error) {
+	var sb strings.Builder
+	sb.WriteString("# Generated file, do not edit\n")
+	encoder := toml.NewEncoder(&sb)
+	if err := encoder.Encode(c.captiveCoreTomlValues); err != nil {
+		return nil, errors.Wrap(err, "could not encode toml file")
+	}
+
+	if len(c.HistoryEntries) > 0 {
+		if err := encoder.Encode(c.HistoryEntries); err != nil {
+			return nil, errors.Wrap(err, "could not encode history entries")
+		}
+	}
+
+	if len(c.QuorumSetEntries) > 0 {
+		if err := encoder.Encode(c.QuorumSetEntries); err != nil {
+			return nil, errors.Wrap(err, "could not encode quorum set")
+		}
+	}
+
+	unflattenedToml := strings.ReplaceAll(sb.String(), c.separator, ".")
+	return []byte(unflattenedToml), nil
+}
+
+func unmarshalTreeNode(t *toml.Tree, key string, dest interface{}) error {
+	tree, ok := t.Get(key).(*toml.Tree)
+	if !ok {
+		return fmt.Errorf("unexpected key %v", key)
+	}
+	return tree.Unmarshal(dest)
+}
+
+func (c *CaptiveCoreToml) unmarshal(text string) error {
+	var body captiveCoreTomlValues
+	quorumSetEntries := map[string]QuorumSet{}
+	historyEntries := map[string]History{}
+	separator := nonSubstring(text)
+	// The toml library has trouble with nested tables so we need to flatten all nested
+	// QUORUM_SET and HISTORY tables as a workaround.
+	// In Marshall() we apply the inverse process to unflatten the nested tables.
+	text = flattenTables(text, []string{"QUORUM_SET", "HISTORY"}, separator)
+
+	data := []byte(text)
+	tree, err := toml.Load(text)
 	if err != nil {
 		return err
 	}
-	c.metadata = metadata
+
+	err = toml.NewDecoder(bytes.NewReader(data)).Decode(&body)
+	if err != nil {
+		return err
+	}
+
+	for _, key := range tree.Keys() {
+		switch {
+		case strings.HasPrefix(key, "QUORUM_SET"):
+			var qs QuorumSet
+			if err = unmarshalTreeNode(tree, key, &qs); err != nil {
+				return err
+			}
+			quorumSetEntries[key] = qs
+		case strings.HasPrefix(key, "HISTORY"):
+			var h History
+			if err = unmarshalTreeNode(tree, key, &h); err != nil {
+				return err
+			}
+			historyEntries[key] = h
+		}
+	}
+
+	c.tree = tree
+	c.captiveCoreTomlValues = body
+	c.separator = separator
+	c.QuorumSetEntries = quorumSetEntries
+	c.HistoryEntries = historyEntries
 	return nil
 }
 
 type CaptiveCoreTomlParams struct {
-	ConfigPath string
-	Strict     bool
 	// NetworkPassphrase is the Stellar network passphrase used by captive core when connecting to the Stellar network
 	NetworkPassphrase string
 	// HistoryArchiveURLs are a list of history archive urls
@@ -139,81 +244,87 @@ type CaptiveCoreTomlParams struct {
 	LogPath *string
 }
 
+func NewCaptiveCoreTomlFromFile(configPath string, params CaptiveCoreTomlParams) (*CaptiveCoreToml, error) {
+	var captiveCoreToml CaptiveCoreToml
+	text, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not load toml path")
+	}
+
+	if err = captiveCoreToml.unmarshal(string(text)); err != nil {
+		return nil, errors.Wrap(err, "could not unmarshall captive core toml")
+	}
+
+	if err = captiveCoreToml.validate(params); err != nil {
+		return nil, errors.Wrap(err, "invalid captive core toml")
+	}
+
+	captiveCoreToml.setDefaults(params)
+	return &captiveCoreToml, nil
+}
+
 func NewCaptiveCoreToml(params CaptiveCoreTomlParams) (*CaptiveCoreToml, error) {
 	var captiveCoreToml CaptiveCoreToml
-	if params.ConfigPath != "" {
-		text, err := ioutil.ReadFile(params.ConfigPath)
-		if err != nil {
-			return nil, errors.Wrap(err, "could not load toml path")
-		}
-		if err = captiveCoreToml.Unmarshal(text); err != nil {
-			return nil, errors.Wrap(err, "could not unmarshall captive core toml")
-		}
-		if err = captiveCoreToml.validate(params); err != nil {
-			return nil, errors.Wrap(err, "invalid captive core toml")
-		}
-	}
+	var err error
+	captiveCoreToml.tree, err = toml.TreeFromMap(map[string]interface{}{})
+	captiveCoreToml.separator = "---"
 	captiveCoreToml.setDefaults(params)
-
-	return &captiveCoreToml, nil
+	return &captiveCoreToml, err
 }
 
 func (c *CaptiveCoreToml) CatchupToml() *CaptiveCoreToml {
 	offline := *c
-	if !c.metadata.IsDefined("RUN_STANDALONE") {
-		offline.RunStandalone = true
-	}
-	if !c.metadata.IsDefined("UNSAFE_QUORUM") {
-		offline.UnsafeQuorum = true
-	}
+	offline.RunStandalone = true
+	offline.UnsafeQuorum = true
+	offline.PublicHTTPPort = false
+	offline.HTTPPort = 0
+	offline.FailureSafety = 0
+
 	if !c.QuorumSetIsConfigured() {
 		// Add a fictional quorum -- necessary to convince core to start up;
 		// but not used at all for our purposes. Pubkey here is just random.
 		offline.QuorumSetEntries = map[string]QuorumSet{
-			"generated": QuorumSet{
+			"QUORUM_SET": QuorumSet{
 				ThresholdPercent: 100,
 				Validators:       []string{"GCZBOIAY4HLKAJVNJORXZOZRAY2BJDBZHKPBHZCRAIUR5IHC2UHBGCQR"},
 			},
 		}
 	}
-	offline.PublicHTTPPort = false
-	offline.HTTPPort = 0
-	offline.FailureSafety = 0
 	return &offline
 }
 
 func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {
-	if !c.metadata.IsDefined("NETWORK_PASSPHRASE") {
+	if !c.tree.Has("NETWORK_PASSPHRASE") {
 		c.NetworkPassphrase = params.NetworkPassphrase
 	}
 
-	if def := c.metadata.IsDefined("HTTP_PORT"); !def && params.HTTPPort != nil {
+	if def := c.tree.Has("HTTP_PORT"); !def && params.HTTPPort != nil {
 		c.HTTPPort = *params.HTTPPort
 	} else if !def && params.HTTPPort == nil {
 		c.HTTPPort = defaultHTTPPort
 	}
 
-	if def := c.metadata.IsDefined("PEER_PORT"); !def && params.PeerPort != nil {
+	if def := c.tree.Has("PEER_PORT"); !def && params.PeerPort != nil {
 		c.PeerPort = *params.PeerPort
 	}
 
-	if def := c.metadata.IsDefined("LOG_FILE_PATH"); !def && params.LogPath != nil {
+	if def := c.tree.Has("LOG_FILE_PATH"); !def && params.LogPath != nil {
 		c.LogFilePath = *params.LogPath
 	} else if !def && params.LogPath == nil {
 		c.LogFilePath = defaultLogFilePath
 	}
 
-	if !c.metadata.IsDefined("FAILURE_SAFETY") {
+	if !c.tree.Has("FAILURE_SAFETY") {
 		c.FailureSafety = defaultFailureSafety
 	}
-	if !c.metadata.IsDefined("DISABLE_XDR_FSYNC") {
+	if !c.tree.Has("DISABLE_XDR_FSYNC") {
 		c.DisableXDRFsync = defaultDisableXDRFsync
 	}
 
 	if !c.historyIsConfigured() {
 		c.HistoryEntries = map[string]History{}
 		for i, val := range params.HistoryArchiveURLs {
-			c.HistoryEntries[fmt.Sprintf("h%d", i)] = History{
+			c.HistoryEntries[fmt.Sprintf("HISTORY%sh%d", c.separator, i)] = History{
 				Get: fmt.Sprintf("curl -sf %s/{0} -o {1}", val),
 			}
 		}
@@ -221,17 +332,7 @@ func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {
 }
 
 func (c *CaptiveCoreToml) validate(params CaptiveCoreTomlParams) error {
-	if params.Strict {
-		if unexpected := c.metadata.Undecoded(); len(unexpected) > 0 {
-			var parts []string
-			for _, key := range unexpected {
-				parts = append(parts, key.String())
-			}
-			return fmt.Errorf("invalid keys in captive core configuration: %s", strings.Join(parts, ", "))
-		}
-	}
-
-	if def := c.metadata.IsDefined("NETWORK_PASSPHRASE"); def && c.NetworkPassphrase != params.NetworkPassphrase {
+	if def := c.tree.Has("NETWORK_PASSPHRASE"); def && c.NetworkPassphrase != params.NetworkPassphrase {
 		return fmt.Errorf(
 			"NETWORK_PASSPHRASE in captive core config file: %s does not match Horizon network-passphrase flag: %s",
 			c.NetworkPassphrase,
@@ -239,7 +340,7 @@ func (c *CaptiveCoreToml) validate(params CaptiveCoreTomlParams) error {
 		)
 	}
 
-	if def := c.metadata.IsDefined("HTTP_PORT"); def && params.HTTPPort != nil && c.HTTPPort != *params.HTTPPort {
+	if def := c.tree.Has("HTTP_PORT"); def && params.HTTPPort != nil && c.HTTPPort != *params.HTTPPort {
 		return fmt.Errorf(
 			"HTTP_PORT in captive core config file: %d does not match Horizon captive-core-http-port flag: %d",
 			c.HTTPPort,
@@ -247,7 +348,7 @@ func (c *CaptiveCoreToml) validate(params CaptiveCoreTomlParams) error {
 		)
 	}
 
-	if def := c.metadata.IsDefined("PEER_PORT"); def && params.PeerPort != nil && c.PeerPort != *params.PeerPort {
+	if def := c.tree.Has("PEER_PORT"); def && params.PeerPort != nil && c.PeerPort != *params.PeerPort {
 		return fmt.Errorf(
 			"PEER_PORT in captive core config file: %d does not match Horizon captive-core-peer-port flag: %d",
 			c.PeerPort,
@@ -255,7 +356,7 @@ func (c *CaptiveCoreToml) validate(params CaptiveCoreTomlParams) error {
 		)
 	}
 
-	if def := c.metadata.IsDefined("LOG_FILE_PATH"); def && params.LogPath != nil && c.LogFilePath != *params.LogPath {
+	if def := c.tree.Has("LOG_FILE_PATH"); def && params.LogPath != nil && c.LogFilePath != *params.LogPath {
 		return fmt.Errorf(
 			"LOG_FILE_PATH in captive core config file: %s does not match Horizon captive-core-log-path flag: %s",
 			c.LogFilePath,

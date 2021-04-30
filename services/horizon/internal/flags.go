@@ -116,7 +116,7 @@ func Flags() (*Config, support.ConfigOptions) {
 			FlagDefault: "",
 			Required:    false,
 			Usage:       "path to additional configuration for the Stellar Core configuration file used by captive core. It must, at least, include enough details to define a quorum set",
-			ConfigKey:   &config.CaptiveCoreTomlParams.ConfigPath,
+			ConfigKey:   &config.CaptiveCoreConfigPath,
 		},
 		&support.ConfigOption{
 			Name:        "enable-captive-core-ingestion",
@@ -484,7 +484,7 @@ func ApplyFlags(config *Config, flags support.ConfigOptions) {
 					StellarCoreBinaryPathName, captiveCoreMigrationHint)
 			}
 
-			if config.RemoteCaptiveCoreURL == "" && (binaryPath == "" || config.CaptiveCoreTomlParams.ConfigPath == "") {
+			if config.RemoteCaptiveCoreURL == "" && (binaryPath == "" || config.CaptiveCoreConfigPath == "") {
 				stdLog.Fatalf("Invalid config: captive core requires that both --%s and --%s are set. %s",
 					StellarCoreBinaryPathName, CaptiveCoreConfigAppendPathName, captiveCoreMigrationHint)
 			}
@@ -493,7 +493,7 @@ func ApplyFlags(config *Config, flags support.ConfigOptions) {
 				var err error
 				config.CaptiveCoreTomlParams.HistoryArchiveURLs = config.HistoryArchiveURLs
 				config.CaptiveCoreTomlParams.NetworkPassphrase = config.NetworkPassphrase
-				config.CaptiveCoreToml, err = ledgerbackend.NewCaptiveCoreToml(config.CaptiveCoreTomlParams)
+				config.CaptiveCoreToml, err = ledgerbackend.NewCaptiveCoreTomlFromFile(config.CaptiveCoreConfigPath, config.CaptiveCoreTomlParams)
 				if err != nil {
 					stdLog.Fatalf("Invalid captive core toml file %v", err)
 				}
@@ -507,7 +507,7 @@ func ApplyFlags(config *Config, flags support.ConfigOptions) {
 			}
 		}
 	} else {
-		if config.EnableCaptiveCoreIngestion && (config.CaptiveCoreBinaryPath != "" || config.CaptiveCoreTomlParams.ConfigPath != "") {
+		if config.EnableCaptiveCoreIngestion && (config.CaptiveCoreBinaryPath != "" || config.CaptiveCoreConfigPath != "") {
 			stdLog.Fatalf("Invalid config: one or more captive core params passed (--%s or --%s) but --ingest not set. "+captiveCoreMigrationHint,
 				StellarCoreBinaryPathName, CaptiveCoreConfigAppendPathName)
 		}
