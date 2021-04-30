@@ -542,7 +542,6 @@ func (c *CaptiveStellarCore) GetLedger(sequence uint32) (bool, xdr.LedgerCloseMe
 		c.previousLedgerHash = &currentLedgerHash
 
 		// Update cache with the latest value because we incremented nextLedger.
-		// TODO add test for this case!
 		c.cachedMeta = result.LedgerCloseMeta
 
 		if seq == sequence {
@@ -640,8 +639,15 @@ func (c *CaptiveStellarCore) Close() error {
 	// after the CaptiveStellarCore context is canceled all subsequent calls to PrepareRange() will fail
 	c.cancel()
 
+	// TODO: Sucks to ignore the error here, but no worse than it was before,
+	// so...
+	if c.ledgerHashStore != nil {
+		c.ledgerHashStore.Close()
+	}
+
 	if c.stellarCoreRunner != nil {
 		return c.stellarCoreRunner.close()
 	}
+
 	return nil
 }
