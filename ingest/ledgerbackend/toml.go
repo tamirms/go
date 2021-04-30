@@ -33,6 +33,7 @@ var validQuality = map[string]bool{
 	"LOW":      true,
 }
 
+// Validator represents a [[VALIDATORS]] entry in the captive core toml file.
 type Validator struct {
 	Name       string `toml:"NAME"`
 	Quality    string `toml:"QUALITY,omitempty"`
@@ -42,11 +43,13 @@ type Validator struct {
 	History    string `toml:"HISTORY,omitempty"`
 }
 
+// HomeDomain represents a [[HOME_DOMAINS]] entry in the captive core toml file.
 type HomeDomain struct {
 	HomeDomain string `toml:"HOME_DOMAIN"`
 	Quality    string `toml:"QUALITY"`
 }
 
+// History represents a [HISTORY] table in the captive core toml file.
 type History struct {
 	Get string `toml:"get"`
 	// should we allow put and mkdir for captive core?
@@ -54,6 +57,7 @@ type History struct {
 	Mkdir string `toml:"mkdir,omitempty"`
 }
 
+// QuorumSet represents a [QUORUM_SET] table in the captive core toml file.
 type QuorumSet struct {
 	ThresholdPercent int      `toml:"THRESHOLD_PERCENT"`
 	Validators       []string `toml:"VALIDATORS"`
@@ -84,11 +88,13 @@ type captiveCoreTomlValues struct {
 	QuorumSetEntries                     map[string]QuorumSet `toml:"-"`
 }
 
+// QuorumSetIsConfigured returns true if there is a quorum set defined in the configuration.
 func (c *captiveCoreTomlValues) QuorumSetIsConfigured() bool {
 	return len(c.QuorumSetEntries) > 0 || len(c.Validators) > 0
 }
 
-func (c *captiveCoreTomlValues) historyIsConfigured() bool {
+// HistoryIsConfigured returns true if the history archive locations are configured.
+func (c *captiveCoreTomlValues) HistoryIsConfigured() bool {
 	if len(c.HistoryEntries) > 0 {
 		return true
 	}
@@ -130,6 +136,7 @@ func (p *placeholders) all() []string {
 	return labelList
 }
 
+// CaptiveCoreToml represents a parsed captive core configuration.
 type CaptiveCoreToml struct {
 	captiveCoreTomlValues
 	tree              *toml.Tree
@@ -163,6 +170,9 @@ func flattenTables(text string, rootNames []string) (string, *placeholders) {
 	return flattened, tablePlaceHolders
 }
 
+// unflattenTables is the inverse of flattenTables, it restores the
+// text back to its original form by replacing all placeholders with their
+// original values
 func unflattenTables(text string, tablePlaceHolders *placeholders) string {
 	orExpression := strings.Join(tablePlaceHolders.all(), "|")
 	re := regexp.MustCompile("\\[(" + orExpression + ")\\]")
@@ -173,6 +183,7 @@ func unflattenTables(text string, tablePlaceHolders *placeholders) string {
 	})
 }
 
+// Marshall serializes the CaptiveCoreToml into a toml document
 func (c *CaptiveCoreToml) Marshall() ([]byte, error) {
 	var sb strings.Builder
 	sb.WriteString("# Generated file, do not edit\n")
@@ -254,6 +265,7 @@ func (c *CaptiveCoreToml) unmarshal(data []byte) error {
 	return nil
 }
 
+// CaptiveCoreTomlParams defines captive core configuration provided by Horizon flags
 type CaptiveCoreTomlParams struct {
 	// NetworkPassphrase is the Stellar network passphrase used by captive core when connecting to the Stellar network
 	NetworkPassphrase string
@@ -270,6 +282,8 @@ type CaptiveCoreTomlParams struct {
 	LogPath *string
 }
 
+// NewCaptiveCoreTomlFromFile constructs a new CaptiveCoreToml instance by merging configuration
+// from the toml file located at `configPath` and the configuration provided by `params`.
 func NewCaptiveCoreTomlFromFile(configPath string, params CaptiveCoreTomlParams) (*CaptiveCoreToml, error) {
 	var captiveCoreToml CaptiveCoreToml
 	data, err := ioutil.ReadFile(configPath)
@@ -289,6 +303,8 @@ func NewCaptiveCoreTomlFromFile(configPath string, params CaptiveCoreTomlParams)
 	return &captiveCoreToml, nil
 }
 
+// NewCaptiveCoreToml constructs a new CaptiveCoreToml instance based off
+// the configuration in `params`.
 func NewCaptiveCoreToml(params CaptiveCoreTomlParams) (*CaptiveCoreToml, error) {
 	var captiveCoreToml CaptiveCoreToml
 	var err error
@@ -303,7 +319,11 @@ func NewCaptiveCoreToml(params CaptiveCoreTomlParams) (*CaptiveCoreToml, error) 
 	return &captiveCoreToml, nil
 }
 
+// CatchupToml returns a new CaptiveCoreToml instance based off the existing
+// instance with some modifications which are suitable for running
+// the catchup command on captive core.
 func (c *CaptiveCoreToml) CatchupToml() (*CaptiveCoreToml, error) {
+	// clone the existing toml file
 	data, err := c.Marshall()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not clone toml")
@@ -360,7 +380,7 @@ func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {
 		c.DisableXDRFsync = defaultDisableXDRFsync
 	}
 
-	if !c.historyIsConfigured() {
+	if !c.HistoryIsConfigured() {
 		c.HistoryEntries = map[string]History{}
 		for i, val := range params.HistoryArchiveURLs {
 			name := fmt.Sprintf("HISTORY.h%d", i)
