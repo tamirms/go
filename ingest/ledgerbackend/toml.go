@@ -182,11 +182,14 @@ func unmarshalTreeNode(t *toml.Tree, key string, dest interface{}) error {
 	return tree.Unmarshal(dest)
 }
 
-func (c *CaptiveCoreToml) unmarshal(text string) error {
+func (c *CaptiveCoreToml) unmarshal(text string, params CaptiveCoreTomlParams) error {
 	var body captiveCoreTomlValues
 	quorumSetEntries := map[string]QuorumSet{}
 	historyEntries := map[string]History{}
-	separator := nonSubstring(text)
+	separator, err := generateSeparator(text, params)
+	if err != nil {
+		return errors.Wrap(err, "could not generate separator")
+	}
 	// The toml library has trouble with nested tables so we need to flatten all nested
 	// QUORUM_SET and HISTORY tables as a workaround.
 	// In Marshall() we apply the inverse process to unflatten the nested tables.
@@ -246,12 +249,12 @@ type CaptiveCoreTomlParams struct {
 
 func NewCaptiveCoreTomlFromFile(configPath string, params CaptiveCoreTomlParams) (*CaptiveCoreToml, error) {
 	var captiveCoreToml CaptiveCoreToml
-	text, err := ioutil.ReadFile(configPath)
+	contents, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not load toml path")
 	}
 
-	if err = captiveCoreToml.unmarshal(string(text)); err != nil {
+	if err = captiveCoreToml.unmarshal(string(contents), params); err != nil {
 		return nil, errors.Wrap(err, "could not unmarshall captive core toml")
 	}
 
@@ -259,19 +262,63 @@ func NewCaptiveCoreTomlFromFile(configPath string, params CaptiveCoreTomlParams)
 		return nil, errors.Wrap(err, "invalid captive core toml")
 	}
 
-	captiveCoreToml.setDefaults(params)
+	setDefaults(&captiveCoreToml.captiveCoreTomlValues, captiveCoreToml.tree, params, captiveCoreToml.separator)
 	return &captiveCoreToml, nil
+}
+
+func generateSeparator(initialText string, params CaptiveCoreTomlParams) (string, error) {
+	var buf strings.Builder
+	buf.WriteString(initialText)
+
+	encoder := toml.NewEncoder(&buf)
+
+	tree, err := toml.TreeFromMap(map[string]interface{}{})
+	if err != nil {
+		return "", err
+	}
+	var defaultValues captiveCoreTomlValues
+	setDefaults(&defaultValues, tree, params, ".")
+
+	if err = encoder.Encode(defaultValues); err != nil {
+		return "", errors.Wrap(err, "could not encode toml file")
+	}
+
+	if err = encoder.Encode(defaultValues.HistoryEntries); err != nil {
+		return "", errors.Wrap(err, "could not serialize history archive tables")
+	}
+
+	if err = encoder.Encode(fakeQuorumSet()); err != nil {
+		return "", errors.Wrap(err, "could not serialize quorum set")
+	}
+
+	return nonSubstring(buf.String()), nil
 }
 
 func NewCaptiveCoreToml(params CaptiveCoreTomlParams) (*CaptiveCoreToml, error) {
 	var captiveCoreToml CaptiveCoreToml
 	var err error
+
+	captiveCoreToml.separator, err = generateSeparator("", params)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not generate separator")
+	}
 	captiveCoreToml.tree, err = toml.TreeFromMap(map[string]interface{}{})
-	captiveCoreToml.separator = "---"
-	captiveCoreToml.setDefaults(params)
-	return &captiveCoreToml, err
+	if err != nil {
+		return nil, err
+	}
+
+	setDefaults(&captiveCoreToml.captiveCoreTomlValues, captiveCoreToml.tree, params, captiveCoreToml.separator)
+	return &captiveCoreToml, nil
 }
 
+func fakeQuorumSet() map[string]QuorumSet {
+	return map[string]QuorumSet{
+		"QUORUM_SET": QuorumSet{
+			ThresholdPercent: 100,
+			Validators:       []string{"GCZBOIAY4HLKAJVNJORXZOZRAY2BJDBZHKPBHZCRAIUR5IHC2UHBGCQR"},
+		},
+	}
+}
 func (c *CaptiveCoreToml) CatchupToml() *CaptiveCoreToml {
 	offline := *c
 	offline.RunStandalone = true
@@ -283,48 +330,43 @@ func (c *CaptiveCoreToml) CatchupToml() *CaptiveCoreToml {
 	if !c.QuorumSetIsConfigured() {
 		// Add a fictional quorum -- necessary to convince core to start up;
 		// but not used at all for our purposes. Pubkey here is just random.
-		offline.QuorumSetEntries = map[string]QuorumSet{
-			"QUORUM_SET": QuorumSet{
-				ThresholdPercent: 100,
-				Validators:       []string{"GCZBOIAY4HLKAJVNJORXZOZRAY2BJDBZHKPBHZCRAIUR5IHC2UHBGCQR"},
-			},
-		}
+		offline.QuorumSetEntries = fakeQuorumSet()
 	}
 	return &offline
 }
 
-func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {
-	if !c.tree.Has("NETWORK_PASSPHRASE") {
+func setDefaults(c *captiveCoreTomlValues, tree *toml.Tree, params CaptiveCoreTomlParams, separator string) {
+	if !tree.Has("NETWORK_PASSPHRASE") {
 		c.NetworkPassphrase = params.NetworkPassphrase
 	}
 
-	if def := c.tree.Has("HTTP_PORT"); !def && params.HTTPPort != nil {
+	if def := tree.Has("HTTP_PORT"); !def && params.HTTPPort != nil {
 		c.HTTPPort = *params.HTTPPort
 	} else if !def && params.HTTPPort == nil {
 		c.HTTPPort = defaultHTTPPort
 	}
 
-	if def := c.tree.Has("PEER_PORT"); !def && params.PeerPort != nil {
+	if def := tree.Has("PEER_PORT"); !def && params.PeerPort != nil {
 		c.PeerPort = *params.PeerPort
 	}
 
-	if def := c.tree.Has("LOG_FILE_PATH"); !def && params.LogPath != nil {
+	if def := tree.Has("LOG_FILE_PATH"); !def && params.LogPath != nil {
 		c.LogFilePath = *params.LogPath
 	} else if !def && params.LogPath == nil {
 		c.LogFilePath = defaultLogFilePath
 	}
 
-	if !c.tree.Has("FAILURE_SAFETY") {
+	if !tree.Has("FAILURE_SAFETY") {
 		c.FailureSafety = defaultFailureSafety
 	}
-	if !c.tree.Has("DISABLE_XDR_FSYNC") {
+	if !tree.Has("DISABLE_XDR_FSYNC") {
 		c.DisableXDRFsync = defaultDisableXDRFsync
 	}
 
 	if !c.historyIsConfigured() {
 		c.HistoryEntries = map[string]History{}
 		for i, val := range params.HistoryArchiveURLs {
-			c.HistoryEntries[fmt.Sprintf("HISTORY%sh%d", c.separator, i)] = History{
+			c.HistoryEntries[fmt.Sprintf("HISTORY%sh%d", separator, i)] = History{
 				Get: fmt.Sprintf("curl -sf %s/{0} -o {1}", val),
 			}
 		}
