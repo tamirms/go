@@ -100,53 +100,76 @@ func (c *captiveCoreTomlValues) historyIsConfigured() bool {
 	return false
 }
 
+type placeholders struct {
+	labels map[string]string
+	count  int
+}
+
+func (p *placeholders) newPlaceholder(key string) string {
+	if p.labels == nil {
+		p.labels = map[string]string{}
+	}
+	placeHolder := fmt.Sprintf("__placeholder_label_%d__", p.count)
+	p.count++
+	p.labels[placeHolder] = key
+	return placeHolder
+}
+
+func (p *placeholders) get(placeholder string) string {
+	if len(p.labels) == 0 {
+		return ""
+	}
+	return p.labels[placeholder]
+}
+
+func (p *placeholders) all() []string {
+	var labelList []string
+	for label := range p.labels {
+		labelList = append(labelList, label)
+	}
+	return labelList
+}
+
 type CaptiveCoreToml struct {
 	captiveCoreTomlValues
-	tree      *toml.Tree
-	separator string
-}
-
-// maxConsecutiveChar returns the length of the longest substring of repeating `char` values found in `s`.
-func maxConsecutiveChar(s string, char byte) int {
-	var count, max int
-	for i := range s {
-		if s[i] == char {
-			count++
-		} else {
-			if count > max {
-				max = count
-			}
-			count = 0
-		}
-	}
-	return max
-}
-
-// nonSubstring returns a string which is guaranteed to not be a substring of `text`.
-func nonSubstring(text string) string {
-	return strings.Repeat("-", maxConsecutiveChar(text, '-')+1)
+	tree              *toml.Tree
+	tablePlaceholders *placeholders
 }
 
 // flattenTables will transform a given toml text by flattening all nested tables
 // whose root can be found in `rootNames`.
 //
-// In the TOML spec dotted keys represents nesting. So we flatten the table key by replacing instances of "."
-// with `separator`. For example:
+// In the TOML spec dotted keys represents nesting. So we flatten the table key by replacing each table
+// path with a placeholder. For example:
 //
 // text := `[QUORUM_SET.a.b.c]
 //         THRESHOLD_PERCENT=67
 //         VALIDATORS=["a","b"]`
-// flattenTables(text, []string{"QUORUM_SET"}, "-") ->
+// flattenTables(text, []string{"QUORUM_SET"}) ->
 //
-// `[QUORUM_SET-a-b-c]
+// `[__placeholder_label_0__]
 // THRESHOLD_PERCENT=67
 // VALIDATORS=["a","b"]`
-func flattenTables(text string, rootNames []string, separator string) string {
+func flattenTables(text string, rootNames []string) (string, *placeholders) {
 	orExpression := strings.Join(rootNames, "|")
 	re := regexp.MustCompile("\\[(" + orExpression + ")(\\..+)?\\]")
 
+	tablePlaceHolders := &placeholders{}
+
+	flattened := re.ReplaceAllStringFunc(text, func(match string) string {
+		insideBrackets := match[1 : len(match)-1]
+		return "[" + tablePlaceHolders.newPlaceholder(insideBrackets) + "]"
+	})
+	return flattened, tablePlaceHolders
+}
+
+func unflattenTables(text string, tablePlaceHolders *placeholders) string {
+	orExpression := strings.Join(tablePlaceHolders.all(), "|")
+	re := regexp.MustCompile("\\[(" + orExpression + ")\\]")
+
 	return re.ReplaceAllStringFunc(text, func(match string) string {
-		return strings.ReplaceAll(match, ".", separator)
+		insideBrackets := match[1 : len(match)-1]
+		return "[" + tablePlaceHolders.get(insideBrackets) + "]"
 	})
 }
 
@@ -170,8 +193,7 @@ func (c *CaptiveCoreToml) Marshall() ([]byte, error) {
 		}
 	}
 
-	unflattenedToml := strings.ReplaceAll(sb.String(), c.separator, ".")
-	return []byte(unflattenedToml), nil
+	return []byte(unflattenTables(sb.String(), c.tablePlaceholders)), nil
 }
 
 func unmarshalTreeNode(t *toml.Tree, key string, dest interface{}) error {
@@ -182,21 +204,17 @@ func unmarshalTreeNode(t *toml.Tree, key string, dest interface{}) error {
 	return tree.Unmarshal(dest)
 }
 
-func (c *CaptiveCoreToml) unmarshal(text string, params CaptiveCoreTomlParams) error {
+func (c *CaptiveCoreToml) unmarshal(data []byte) error {
 	var body captiveCoreTomlValues
 	quorumSetEntries := map[string]QuorumSet{}
 	historyEntries := map[string]History{}
-	separator, err := generateSeparator(text, params)
-	if err != nil {
-		return errors.Wrap(err, "could not generate separator")
-	}
 	// The toml library has trouble with nested tables so we need to flatten all nested
 	// QUORUM_SET and HISTORY tables as a workaround.
 	// In Marshall() we apply the inverse process to unflatten the nested tables.
-	text = flattenTables(text, []string{"QUORUM_SET", "HISTORY"}, separator)
+	flattened, tablePlaceholders := flattenTables(string(data), []string{"QUORUM_SET", "HISTORY"})
 
-	data := []byte(text)
-	tree, err := toml.Load(text)
+	data = []byte(flattened)
+	tree, err := toml.Load(flattened)
 	if err != nil {
 		return err
 	}
@@ -207,14 +225,19 @@ func (c *CaptiveCoreToml) unmarshal(text string, params CaptiveCoreTomlParams) e
 	}
 
 	for _, key := range tree.Keys() {
+		originalKey := tablePlaceholders.get(key)
+		if originalKey == "" {
+			continue
+		}
+
 		switch {
-		case strings.HasPrefix(key, "QUORUM_SET"):
+		case strings.HasPrefix(originalKey, "QUORUM_SET"):
 			var qs QuorumSet
 			if err = unmarshalTreeNode(tree, key, &qs); err != nil {
 				return err
 			}
 			quorumSetEntries[key] = qs
-		case strings.HasPrefix(key, "HISTORY"):
+		case strings.HasPrefix(originalKey, "HISTORY"):
 			var h History
 			if err = unmarshalTreeNode(tree, key, &h); err != nil {
 				return err
@@ -225,7 +248,7 @@ func (c *CaptiveCoreToml) unmarshal(text string, params CaptiveCoreTomlParams) e
 
 	c.tree = tree
 	c.captiveCoreTomlValues = body
-	c.separator = separator
+	c.tablePlaceholders = tablePlaceholders
 	c.QuorumSetEntries = quorumSetEntries
 	c.HistoryEntries = historyEntries
 	return nil
@@ -249,12 +272,12 @@ type CaptiveCoreTomlParams struct {
 
 func NewCaptiveCoreTomlFromFile(configPath string, params CaptiveCoreTomlParams) (*CaptiveCoreToml, error) {
 	var captiveCoreToml CaptiveCoreToml
-	contents, err := ioutil.ReadFile(configPath)
+	data, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not load toml path")
 	}
 
-	if err = captiveCoreToml.unmarshal(string(contents), params); err != nil {
+	if err = captiveCoreToml.unmarshal(data); err != nil {
 		return nil, errors.Wrap(err, "could not unmarshall captive core toml")
 	}
 
@@ -262,65 +285,34 @@ func NewCaptiveCoreTomlFromFile(configPath string, params CaptiveCoreTomlParams)
 		return nil, errors.Wrap(err, "invalid captive core toml")
 	}
 
-	setDefaults(&captiveCoreToml.captiveCoreTomlValues, captiveCoreToml.tree, params, captiveCoreToml.separator)
+	captiveCoreToml.setDefaults(params)
 	return &captiveCoreToml, nil
-}
-
-func generateSeparator(initialText string, params CaptiveCoreTomlParams) (string, error) {
-	var buf strings.Builder
-	buf.WriteString(initialText)
-
-	encoder := toml.NewEncoder(&buf)
-
-	tree, err := toml.TreeFromMap(map[string]interface{}{})
-	if err != nil {
-		return "", err
-	}
-	var defaultValues captiveCoreTomlValues
-	setDefaults(&defaultValues, tree, params, ".")
-
-	if err = encoder.Encode(defaultValues); err != nil {
-		return "", errors.Wrap(err, "could not encode toml file")
-	}
-
-	if err = encoder.Encode(defaultValues.HistoryEntries); err != nil {
-		return "", errors.Wrap(err, "could not serialize history archive tables")
-	}
-
-	if err = encoder.Encode(fakeQuorumSet()); err != nil {
-		return "", errors.Wrap(err, "could not serialize quorum set")
-	}
-
-	return nonSubstring(buf.String()), nil
 }
 
 func NewCaptiveCoreToml(params CaptiveCoreTomlParams) (*CaptiveCoreToml, error) {
 	var captiveCoreToml CaptiveCoreToml
 	var err error
 
-	captiveCoreToml.separator, err = generateSeparator("", params)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not generate separator")
-	}
+	captiveCoreToml.tablePlaceholders = &placeholders{}
 	captiveCoreToml.tree, err = toml.TreeFromMap(map[string]interface{}{})
 	if err != nil {
 		return nil, err
 	}
 
-	setDefaults(&captiveCoreToml.captiveCoreTomlValues, captiveCoreToml.tree, params, captiveCoreToml.separator)
+	captiveCoreToml.setDefaults(params)
 	return &captiveCoreToml, nil
 }
 
-func fakeQuorumSet() map[string]QuorumSet {
-	return map[string]QuorumSet{
-		"QUORUM_SET": QuorumSet{
-			ThresholdPercent: 100,
-			Validators:       []string{"GCZBOIAY4HLKAJVNJORXZOZRAY2BJDBZHKPBHZCRAIUR5IHC2UHBGCQR"},
-		},
+func (c *CaptiveCoreToml) CatchupToml() (*CaptiveCoreToml, error) {
+	data, err := c.Marshall()
+	if err != nil {
+		return nil, errors.Wrap(err, "could not clone toml")
 	}
-}
-func (c *CaptiveCoreToml) CatchupToml() *CaptiveCoreToml {
-	offline := *c
+	var offline CaptiveCoreToml
+	if err = offline.unmarshal(data); err != nil {
+		return nil, errors.Wrap(err, "could not unmarshall captive core toml")
+	}
+
 	offline.RunStandalone = true
 	offline.UnsafeQuorum = true
 	offline.PublicHTTPPort = false
@@ -330,43 +322,49 @@ func (c *CaptiveCoreToml) CatchupToml() *CaptiveCoreToml {
 	if !c.QuorumSetIsConfigured() {
 		// Add a fictional quorum -- necessary to convince core to start up;
 		// but not used at all for our purposes. Pubkey here is just random.
-		offline.QuorumSetEntries = fakeQuorumSet()
+		offline.QuorumSetEntries = map[string]QuorumSet{
+			"QUORUM_SET": QuorumSet{
+				ThresholdPercent: 100,
+				Validators:       []string{"GCZBOIAY4HLKAJVNJORXZOZRAY2BJDBZHKPBHZCRAIUR5IHC2UHBGCQR"},
+			},
+		}
 	}
-	return &offline
+	return &offline, nil
 }
 
-func setDefaults(c *captiveCoreTomlValues, tree *toml.Tree, params CaptiveCoreTomlParams, separator string) {
-	if !tree.Has("NETWORK_PASSPHRASE") {
+func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {
+	if !c.tree.Has("NETWORK_PASSPHRASE") {
 		c.NetworkPassphrase = params.NetworkPassphrase
 	}
 
-	if def := tree.Has("HTTP_PORT"); !def && params.HTTPPort != nil {
+	if def := c.tree.Has("HTTP_PORT"); !def && params.HTTPPort != nil {
 		c.HTTPPort = *params.HTTPPort
 	} else if !def && params.HTTPPort == nil {
 		c.HTTPPort = defaultHTTPPort
 	}
 
-	if def := tree.Has("PEER_PORT"); !def && params.PeerPort != nil {
+	if def := c.tree.Has("PEER_PORT"); !def && params.PeerPort != nil {
 		c.PeerPort = *params.PeerPort
 	}
 
-	if def := tree.Has("LOG_FILE_PATH"); !def && params.LogPath != nil {
+	if def := c.tree.Has("LOG_FILE_PATH"); !def && params.LogPath != nil {
 		c.LogFilePath = *params.LogPath
 	} else if !def && params.LogPath == nil {
 		c.LogFilePath = defaultLogFilePath
 	}
 
-	if !tree.Has("FAILURE_SAFETY") {
+	if !c.tree.Has("FAILURE_SAFETY") {
 		c.FailureSafety = defaultFailureSafety
 	}
-	if !tree.Has("DISABLE_XDR_FSYNC") {
+	if !c.tree.Has("DISABLE_XDR_FSYNC") {
 		c.DisableXDRFsync = defaultDisableXDRFsync
 	}
 
 	if !c.historyIsConfigured() {
 		c.HistoryEntries = map[string]History{}
 		for i, val := range params.HistoryArchiveURLs {
-			c.HistoryEntries[fmt.Sprintf("HISTORY%sh%d", separator, i)] = History{
+			name := fmt.Sprintf("HISTORY.h%d", i)
+			c.HistoryEntries[c.tablePlaceholders.newPlaceholder(name)] = History{
 				Get: fmt.Sprintf("curl -sf %s/{0} -o {1}", val),
 			}
 		}

@@ -136,7 +136,11 @@ func writeConf(captiveCoreToml *CaptiveCoreToml, mode stellarCoreRunnerMode, loc
 
 func generateConfig(captiveCoreToml *CaptiveCoreToml, mode stellarCoreRunnerMode) ([]byte, error) {
 	if mode == stellarCoreRunnerModeOffline {
-		captiveCoreToml = captiveCoreToml.CatchupToml()
+		var err error
+		captiveCoreToml, err = captiveCoreToml.CatchupToml()
+		if err != nil {
+			return nil, errors.Wrap(err, "could not generate catch up config")
+		}
 	}
 
 	if !captiveCoreToml.QuorumSetIsConfigured() {
