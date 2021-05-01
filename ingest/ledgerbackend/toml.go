@@ -429,8 +429,7 @@ func (c *CaptiveCoreToml) validate(params CaptiveCoreTomlParams) error {
 		}
 		if hd.HomeDomain == "" {
 			return fmt.Errorf(
-				"found invalid home domain entry which is missing a HOME_DOMAIN value: %s",
-				hd.HomeDomain,
+				"found invalid home domain entry which is missing a HOME_DOMAIN value",
 			)
 		}
 		if hd.Quality == "" {
