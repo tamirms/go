@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/stellar/go/support/errors"
+	"github.com/stellar/go/support/log"
 	"github.com/stellar/go/xdr"
 
 	"github.com/pelletier/go-toml"
@@ -292,6 +293,14 @@ func NewCaptiveCoreTomlFromFile(configPath string, params CaptiveCoreTomlParams)
 
 	if err = captiveCoreToml.validate(params); err != nil {
 		return nil, errors.Wrap(err, "invalid captive core toml")
+	}
+
+	if len(captiveCoreToml.HistoryEntries) > 0 {
+		log.Warnf(
+			"Configuring captive core with history archive from %s instead of %v",
+			configPath,
+			params.HistoryArchiveURLs,
+		)
 	}
 
 	captiveCoreToml.setDefaults(params)
