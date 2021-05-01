@@ -128,14 +128,6 @@ func (p *placeholders) get(placeholder string) string {
 	return p.labels[placeholder]
 }
 
-func (p *placeholders) all() []string {
-	var labelList []string
-	for label := range p.labels {
-		labelList = append(labelList, label)
-	}
-	return labelList
-}
-
 // CaptiveCoreToml represents a parsed captive core configuration.
 type CaptiveCoreToml struct {
 	captiveCoreTomlValues
@@ -172,18 +164,21 @@ func flattenTables(text string, rootNames []string) (string, *placeholders) {
 
 // unflattenTables is the inverse of flattenTables, it restores the
 // text back to its original form by replacing all placeholders with their
-// original values
+// original values.
 func unflattenTables(text string, tablePlaceHolders *placeholders) string {
-	orExpression := strings.Join(tablePlaceHolders.all(), "|")
-	re := regexp.MustCompile("\\[(" + orExpression + ")\\]")
+	re := regexp.MustCompile("\\[.*\\]")
 
 	return re.ReplaceAllStringFunc(text, func(match string) string {
 		insideBrackets := match[1 : len(match)-1]
-		return "[" + tablePlaceHolders.get(insideBrackets) + "]"
+		original := tablePlaceHolders.get(insideBrackets)
+		if len(original) == 0 {
+			return match
+		}
+		return "[" + original + "]"
 	})
 }
 
-// Marshall serializes the CaptiveCoreToml into a toml document
+// Marshall serializes the CaptiveCoreToml into a toml document.
 func (c *CaptiveCoreToml) Marshall() ([]byte, error) {
 	var sb strings.Builder
 	sb.WriteString("# Generated file, do not edit\n")
@@ -265,20 +260,20 @@ func (c *CaptiveCoreToml) unmarshal(data []byte) error {
 	return nil
 }
 
-// CaptiveCoreTomlParams defines captive core configuration provided by Horizon flags
+// CaptiveCoreTomlParams defines captive core configuration provided by Horizon flags.
 type CaptiveCoreTomlParams struct {
-	// NetworkPassphrase is the Stellar network passphrase used by captive core when connecting to the Stellar network
+	// NetworkPassphrase is the Stellar network passphrase used by captive core when connecting to the Stellar network.
 	NetworkPassphrase string
-	// HistoryArchiveURLs are a list of history archive urls
+	// HistoryArchiveURLs are a list of history archive urls.
 	HistoryArchiveURLs []string
-	// HTTPPort is the TCP port to listen for requests (defaults to 0, which disables the HTTP server)
+	// HTTPPort is the TCP port to listen for requests (defaults to 0, which disables the HTTP server).
 	HTTPPort *uint
 	// PeerPort is the TCP port to bind to for connecting to the Stellar network
 	// (defaults to 11625). It may be useful for example when there's >1 Stellar-Core
 	// instance running on a machine.
 	PeerPort *uint
 	// LogPath is the (optional) path in which to store Core logs, passed along
-	// to Stellar Core's LOG_FILE_PATH
+	// to Stellar Core's LOG_FILE_PATH.
 	LogPath *string
 }
 
