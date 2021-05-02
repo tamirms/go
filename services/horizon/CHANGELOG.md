@@ -3,6 +3,10 @@
 All notable changes to this project will be documented in this
 file. This project adheres to [Semantic Versioning](http://semver.org/).
 
+## Unreleased
+
+* Improve parsing logic for captive core toml configuration ([3558](https://github.com/stellar/go/pull/3558)).
+
 ## v2.2.0
 
 **Upgrading to this version will trigger state rebuild. During this process (which can take up to 20 minutes) it will not ingest new ledgers.**
