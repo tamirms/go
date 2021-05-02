@@ -152,7 +152,7 @@ type CaptiveCoreToml struct {
 // VALIDATORS=["a","b"]`
 func flattenTables(text string, rootNames []string) (string, *placeholders) {
 	orExpression := strings.Join(rootNames, "|")
-	re := regexp.MustCompile("\\[(" + orExpression + ")(\\..+)?\\]")
+	re := regexp.MustCompile(`\[(` + orExpression + `)(\..+)?\]`)
 
 	tablePlaceHolders := &placeholders{}
 
@@ -167,7 +167,7 @@ func flattenTables(text string, rootNames []string) (string, *placeholders) {
 // text back to its original form by replacing all placeholders with their
 // original values.
 func unflattenTables(text string, tablePlaceHolders *placeholders) string {
-	re := regexp.MustCompile("\\[.*\\]")
+	re := regexp.MustCompile(`\[.*\]`)
 
 	return re.ReplaceAllStringFunc(text, func(match string) string {
 		insideBrackets := match[1 : len(match)-1]
