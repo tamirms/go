@@ -67,12 +67,21 @@ func Example_changes() {
 	archiveURL := "http://history.stellar.org/prd/core-live/core_live_001"
 	networkPassphrase := network.PublicNetworkPassphrase
 
+	captiveCoreToml, err := ledgerbackend.NewCaptiveCoreToml(ledgerbackend.CaptiveCoreTomlParams{
+		NetworkPassphrase:  networkPassphrase,
+		HistoryArchiveURLs: []string{archiveURL},
+	})
+	if err != nil {
+		panic(err)
+	}
+
 	// Requires Stellar-Core 13.2.0+
 	backend, err := ledgerbackend.NewCaptive(
 		ledgerbackend.CaptiveCoreConfig{
 			BinaryPath:         "/bin/stellar-core",
 			NetworkPassphrase:  networkPassphrase,
 			HistoryArchiveURLs: []string{archiveURL},
+			Toml:               captiveCoreToml,
 		},
 	)
 	if err != nil {
