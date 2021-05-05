@@ -185,7 +185,7 @@ func TestCaptivePrepareRange(t *testing.T) {
 		}),
 	}
 
-	err := captiveBackend.PrepareRange(BoundedRange(100, 200))
+	err := captiveBackend.PrepareRange(ctx, BoundedRange(100, 200))
 	assert.NoError(t, err)
 	mockRunner.On("close").Return(nil).Once()
 	err = captiveBackend.Close()
@@ -221,7 +221,7 @@ func TestCaptivePrepareRangeCrash(t *testing.T) {
 		checkpointManager: historyarchive.NewCheckpointManager(64),
 	}
 
-	err := captiveBackend.PrepareRange(BoundedRange(100, 200))
+	err := captiveBackend.PrepareRange(ctx, BoundedRange(100, 200))
 	assert.EqualError(t, err, "Error fast-forwarding to 100: stellar core exited unexpectedly: exit code -1")
 	mockRunner.AssertExpectations(t)
 	mockArchive.AssertExpectations(t)
@@ -260,7 +260,7 @@ func TestCaptivePrepareRangeTerminated(t *testing.T) {
 		checkpointManager: historyarchive.NewCheckpointManager(64),
 	}
 
-	err := captiveBackend.PrepareRange(BoundedRange(100, 200))
+	err := captiveBackend.PrepareRange(ctx, BoundedRange(100, 200))
 	assert.NoError(t, err)
 	mockRunner.AssertExpectations(t)
 	mockArchive.AssertExpectations(t)
@@ -277,16 +277,17 @@ func TestCaptivePrepareRange_ErrClosingSession(t *testing.T) {
 		stellarCoreRunner: mockRunner,
 	}
 
-	err := captiveBackend.PrepareRange(BoundedRange(100, 200))
+	err := captiveBackend.PrepareRange(ctx, BoundedRange(100, 200))
 	assert.EqualError(t, err, "error starting prepare range: error closing existing session: transient error")
 
-	err = captiveBackend.PrepareRange(UnboundedRange(64))
+	err = captiveBackend.PrepareRange(ctx, UnboundedRange(64))
 	assert.EqualError(t, err, "error starting prepare range: error closing existing session: transient error")
 
 	mockRunner.AssertExpectations(t)
 }
 
 func TestCaptivePrepareRange_ErrGettingRootHAS(t *testing.T) {
+	ctx := context.Background()
 	mockArchive := &historyarchive.MockArchive{}
 	mockArchive.
 		On("GetRootHAS").
@@ -296,16 +297,17 @@ func TestCaptivePrepareRange_ErrGettingRootHAS(t *testing.T) {
 		archive: mockArchive,
 	}
 
-	err := captiveBackend.PrepareRange(BoundedRange(100, 200))
+	err := captiveBackend.PrepareRange(ctx, BoundedRange(100, 200))
 	assert.EqualError(t, err, "error starting prepare range: opening subprocess: error getting latest checkpoint sequence: error getting root HAS: transient error")
 
-	err = captiveBackend.PrepareRange(UnboundedRange(100))
+	err = captiveBackend.PrepareRange(ctx, UnboundedRange(100))
 	assert.EqualError(t, err, "error starting prepare range: opening subprocess: error getting latest checkpoint sequence: error getting root HAS: transient error")
 
 	mockArchive.AssertExpectations(t)
 }
 
 func TestCaptivePrepareRange_FromIsAheadOfRootHAS(t *testing.T) {
+	ctx := context.Background()
 	mockArchive := &historyarchive.MockArchive{}
 	mockArchive.
 		On("GetRootHAS").
@@ -317,10 +319,10 @@ func TestCaptivePrepareRange_FromIsAheadOfRootHAS(t *testing.T) {
 		archive: mockArchive,
 	}
 
-	err := captiveBackend.PrepareRange(BoundedRange(100, 200))
+	err := captiveBackend.PrepareRange(ctx, BoundedRange(100, 200))
 	assert.EqualError(t, err, "error starting prepare range: opening subprocess: sequence: 100 is greater than max available in history archives: 64")
 
-	err = captiveBackend.PrepareRange(UnboundedRange(100))
+	err = captiveBackend.PrepareRange(ctx, UnboundedRange(100))
 	assert.EqualError(t, err, "error starting prepare range: opening subprocess: trying to start online mode too far (latest checkpoint=64), only two checkpoints in the future allowed")
 
 	mockArchive.AssertExpectations(t)
@@ -359,7 +361,7 @@ func TestCaptivePrepareRange_ToIsAheadOfRootHAS(t *testing.T) {
 		checkpointManager: historyarchive.NewCheckpointManager(64),
 	}
 
-	err := captiveBackend.PrepareRange(BoundedRange(100, 200))
+	err := captiveBackend.PrepareRange(ctx, BoundedRange(100, 200))
 	assert.NoError(t, err)
 
 	mockArchive.AssertExpectations(t)
@@ -378,6 +380,7 @@ func TestCaptivePrepareRange_ErrCatchup(t *testing.T) {
 			CurrentLedger: uint32(192),
 		}, nil)
 
+	ctx := context.Background()
 	cancelCalled := false
 	captiveBackend := CaptiveStellarCore{
 		archive: mockArchive,
@@ -389,7 +392,7 @@ func TestCaptivePrepareRange_ErrCatchup(t *testing.T) {
 		}),
 	}
 
-	err := captiveBackend.PrepareRange(BoundedRange(100, 200))
+	err := captiveBackend.PrepareRange(ctx, BoundedRange(100, 200))
 	assert.EqualError(t, err, "error starting prepare range: opening subprocess: error running stellar-core: transient error")
 
 	// make sure we can Close without errors
@@ -416,6 +419,7 @@ func TestCaptivePrepareRangeUnboundedRange_ErrRunFrom(t *testing.T) {
 		On("GetLedgerHeader", uint32(127)).
 		Return(xdr.LedgerHeaderHistoryEntry{}, nil)
 
+	ctx := context.Background()
 	cancelCalled := false
 	captiveBackend := CaptiveStellarCore{
 		archive: mockArchive,
@@ -428,7 +432,7 @@ func TestCaptivePrepareRangeUnboundedRange_ErrRunFrom(t *testing.T) {
 		}),
 	}
 
-	err := captiveBackend.PrepareRange(UnboundedRange(128))
+	err := captiveBackend.PrepareRange(ctx, UnboundedRange(128))
 	assert.EqualError(t, err, "error starting prepare range: opening subprocess: error running stellar-core: transient error")
 
 	// make sure we can Close without errors
@@ -475,11 +479,11 @@ func TestCaptivePrepareRangeUnboundedRange_ReuseSession(t *testing.T) {
 		checkpointManager: historyarchive.NewCheckpointManager(64),
 	}
 
-	err := captiveBackend.PrepareRange(UnboundedRange(65))
+	err := captiveBackend.PrepareRange(ctx, UnboundedRange(65))
 	assert.NoError(t, err)
 
 	captiveBackend.nextLedger = 64
-	err = captiveBackend.PrepareRange(UnboundedRange(65))
+	err = captiveBackend.PrepareRange(ctx, UnboundedRange(65))
 	assert.NoError(t, err)
 
 	mockArchive.AssertExpectations(t)
@@ -523,10 +527,10 @@ func TestGetLatestLedgerSequence(t *testing.T) {
 		checkpointManager: historyarchive.NewCheckpointManager(64),
 	}
 
-	err := captiveBackend.PrepareRange(UnboundedRange(64))
+	err := captiveBackend.PrepareRange(ctx, UnboundedRange(64))
 	assert.NoError(t, err)
 
-	latest, err := captiveBackend.GetLatestLedgerSequence()
+	latest, err := captiveBackend.GetLatestLedgerSequence(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(200), latest)
 
@@ -568,23 +572,22 @@ func TestCaptiveGetLedger(t *testing.T) {
 	}
 
 	// requires PrepareRange
-	_, _, err := captiveBackend.GetLedger(64)
+	_, err := captiveBackend.GetLedger(ctx, 64)
 	tt.EqualError(err, "session is closed, call PrepareRange first")
 
-	err = captiveBackend.PrepareRange(BoundedRange(65, 66))
+	err = captiveBackend.PrepareRange(ctx, BoundedRange(65, 66))
 	assert.NoError(t, err)
 
-	_, _, err = captiveBackend.GetLedger(64)
+	_, err = captiveBackend.GetLedger(ctx, 64)
 	tt.Error(err, "requested ledger 64 is behind the captive core stream (expected=66)")
 
 	// reads value from buffer
-	found, meta, err := captiveBackend.GetLedger(65)
+	meta, err := captiveBackend.GetLedger(ctx, 65)
 	tt.NoError(err)
-	tt.True(found)
 	tt.Equal(xdr.Uint32(65), meta.V0.LedgerHeader.Header.LedgerSeq)
 
 	// reads value from cachedMeta
-	_, cachedMeta, err := captiveBackend.GetLedger(65)
+	cachedMeta, err := captiveBackend.GetLedger(ctx, 65)
 	tt.NoError(err)
 	tt.Equal(meta, cachedMeta)
 
@@ -595,14 +598,14 @@ func TestCaptiveGetLedger(t *testing.T) {
 		cancel()
 	}).Once()
 
-	_, _, err = captiveBackend.GetLedger(66)
+	_, err = captiveBackend.GetLedger(ctx, 66)
 	tt.NoError(err)
 
 	// closes after last ledger is consumed
 	tt.True(captiveBackend.isClosed())
 
 	// we should be able to call last ledger even after get ledger is closed
-	_, _, err = captiveBackend.GetLedger(66)
+	_, err = captiveBackend.GetLedger(ctx, 66)
 	tt.NoError(err)
 
 	mockArchive.AssertExpectations(t)
@@ -616,6 +619,8 @@ func TestCaptiveGetLedger(t *testing.T) {
 //
 // Before 3d97762 this test failed because cachedMeta was only updated when
 // the ledger with a requested sequence was reached while streaming meta.
+//
+// TODO: Not sure this test is really valid or worth it anymore, now that GetLedger is always blocking.
 func TestCaptiveGetLedgerCacheLatestLedger(t *testing.T) {
 	tt := assert.New(t)
 	metaChan := make(chan metaResult, 300)
@@ -657,18 +662,17 @@ func TestCaptiveGetLedgerCacheLatestLedger(t *testing.T) {
 		checkpointManager: historyarchive.NewCheckpointManager(64),
 	}
 
-	err := captiveBackend.PrepareRange(UnboundedRange(66))
+	err := captiveBackend.PrepareRange(ctx, UnboundedRange(66))
 	assert.NoError(t, err)
 
-	found, _, err := captiveBackend.GetLedger(68)
-	tt.NoError(err)
-	tt.False(found)
-	tt.Equal(uint32(67), captiveBackend.cachedMeta.LedgerSequence())
-	tt.Equal(uint32(68), captiveBackend.nextLedger)
+	// found, _, err := captiveBackend.GetLedger(ctx, 68)
+	// tt.NoError(err)
+	// tt.False(found)
+	// tt.Equal(uint32(67), captiveBackend.cachedMeta.LedgerSequence())
+	// tt.Equal(uint32(68), captiveBackend.nextLedger)
 
-	found, meta, err := captiveBackend.GetLedger(67)
+	meta, err := captiveBackend.GetLedger(ctx, 67)
 	tt.NoError(err)
-	tt.True(found)
 	tt.Equal(uint32(67), meta.LedgerSequence())
 
 	mockArchive.AssertExpectations(t)
@@ -713,10 +717,10 @@ func TestCaptiveGetLedger_NextLedgerIsDifferentToLedgerFromBuffer(t *testing.T) 
 		checkpointManager: historyarchive.NewCheckpointManager(64),
 	}
 
-	err := captiveBackend.PrepareRange(BoundedRange(65, 66))
+	err := captiveBackend.PrepareRange(ctx, BoundedRange(65, 66))
 	assert.NoError(t, err)
 
-	_, _, err = captiveBackend.GetLedger(66)
+	_, err = captiveBackend.GetLedger(ctx, 66)
 	assert.EqualError(t, err, "unexpected ledger sequence (expected=66 actual=68)")
 
 	mockArchive.AssertExpectations(t)
@@ -724,6 +728,7 @@ func TestCaptiveGetLedger_NextLedgerIsDifferentToLedgerFromBuffer(t *testing.T) 
 }
 
 func TestCaptiveStellarCore_PrepareRangeAfterClose(t *testing.T) {
+	ctx := context.Background()
 	executablePath := "/etc/stellar-core"
 	networkPassphrase := network.PublicNetworkPassphrase
 	historyURLs := []string{"http://localhost"}
@@ -745,7 +750,7 @@ func TestCaptiveStellarCore_PrepareRangeAfterClose(t *testing.T) {
 
 	assert.EqualError(
 		t,
-		captiveStellarCore.PrepareRange(BoundedRange(65, 66)),
+		captiveStellarCore.PrepareRange(ctx, BoundedRange(65, 66)),
 		"error starting prepare range: opening subprocess: error getting latest checkpoint sequence: "+
 			"error getting root HAS: Get \"http://localhost/.well-known/stellar-history.json\": context canceled",
 	)
@@ -760,7 +765,7 @@ func TestCaptiveStellarCore_PrepareRangeAfterClose(t *testing.T) {
 	captiveStellarCore.archive = mockArchive
 	assert.EqualError(
 		t,
-		captiveStellarCore.PrepareRange(BoundedRange(65, 66)),
+		captiveStellarCore.PrepareRange(ctx, BoundedRange(65, 66)),
 		"error starting prepare range: opening subprocess: error running stellar-core: context canceled",
 	)
 	mockArchive.AssertExpectations(t)
@@ -807,16 +812,15 @@ func TestCaptiveGetLedger_ErrReadingMetaResult(t *testing.T) {
 		checkpointManager: historyarchive.NewCheckpointManager(64),
 	}
 
-	err := captiveBackend.PrepareRange(BoundedRange(65, 66))
+	err := captiveBackend.PrepareRange(ctx, BoundedRange(65, 66))
 	assert.NoError(t, err)
 
-	found, meta, err := captiveBackend.GetLedger(65)
+	meta, err := captiveBackend.GetLedger(ctx, 65)
 	tt.NoError(err)
-	tt.True(found)
 	tt.Equal(xdr.Uint32(65), meta.V0.LedgerHeader.Header.LedgerSeq)
 
 	// try reading from an empty buffer
-	_, _, err = captiveBackend.GetLedger(66)
+	_, err = captiveBackend.GetLedger(ctx, 66)
 	tt.EqualError(err, "unmarshalling error")
 
 	// closes if there is an error getting ledger
@@ -859,10 +863,10 @@ func TestCaptiveGetLedger_ErrClosingAfterLastLedger(t *testing.T) {
 		checkpointManager: historyarchive.NewCheckpointManager(64),
 	}
 
-	err := captiveBackend.PrepareRange(BoundedRange(65, 66))
+	err := captiveBackend.PrepareRange(ctx, BoundedRange(65, 66))
 	assert.NoError(t, err)
 
-	_, _, err = captiveBackend.GetLedger(66)
+	_, err = captiveBackend.GetLedger(ctx, 66)
 	tt.EqualError(err, "error closing session: transient error")
 
 	mockArchive.AssertExpectations(t)
@@ -903,20 +907,20 @@ func TestCaptiveAfterClose(t *testing.T) {
 	}
 
 	boundedRange := BoundedRange(65, 66)
-	err := captiveBackend.PrepareRange(boundedRange)
+	err := captiveBackend.PrepareRange(ctx, boundedRange)
 	assert.NoError(t, err)
 
 	assert.NoError(t, captiveBackend.Close())
 
-	_, _, err = captiveBackend.GetLedger(boundedRange.to)
+	_, err = captiveBackend.GetLedger(ctx, boundedRange.to)
 	assert.EqualError(t, err, "session is closed, call PrepareRange first")
 
 	var prepared bool
-	prepared, err = captiveBackend.IsPrepared(boundedRange)
+	prepared, err = captiveBackend.IsPrepared(ctx, boundedRange)
 	assert.False(t, prepared)
 	assert.NoError(t, err)
 
-	_, err = captiveBackend.GetLatestLedgerSequence()
+	_, err = captiveBackend.GetLatestLedgerSequence(ctx)
 	assert.EqualError(t, err, "stellar-core must be opened to return latest available sequence")
 
 	mockArchive.AssertExpectations(t)
@@ -954,21 +958,19 @@ func TestGetLedgerBoundsCheck(t *testing.T) {
 		checkpointManager: historyarchive.NewCheckpointManager(64),
 	}
 
-	err := captiveBackend.PrepareRange(BoundedRange(128, 130))
+	err := captiveBackend.PrepareRange(ctx, BoundedRange(128, 130))
 	assert.NoError(t, err)
 
-	exists, meta, err := captiveBackend.GetLedger(128)
+	meta, err := captiveBackend.GetLedger(ctx, 128)
 	assert.NoError(t, err)
-	assert.True(t, exists)
 	assert.Equal(t, uint32(128), meta.LedgerSequence())
 
 	prev := meta
-	exists, meta, err = captiveBackend.GetLedger(128)
+	meta, err = captiveBackend.GetLedger(ctx, 128)
 	assert.NoError(t, err)
-	assert.True(t, exists)
 	assert.Equal(t, prev, meta)
 
-	_, _, err = captiveBackend.GetLedger(64)
+	_, err = captiveBackend.GetLedger(ctx, 64)
 	assert.EqualError(t, err, "requested ledger 64 is behind the captive core stream (expected=129)")
 
 	mockArchive.AssertExpectations(t)
@@ -1058,15 +1060,14 @@ func TestCaptiveGetLedgerTerminatedUnexpectedly(t *testing.T) {
 				checkpointManager: historyarchive.NewCheckpointManager(64),
 			}
 
-			err := captiveBackend.PrepareRange(BoundedRange(64, 100))
+			err := captiveBackend.PrepareRange(ctx, BoundedRange(64, 100))
 			assert.NoError(t, err)
 
-			exists, meta, err := captiveBackend.GetLedger(64)
+			meta, err := captiveBackend.GetLedger(ctx, 64)
 			assert.NoError(t, err)
-			assert.True(t, exists)
 			assert.Equal(t, uint32(64), meta.LedgerSequence())
 
-			_, _, err = captiveBackend.GetLedger(65)
+			_, err = captiveBackend.GetLedger(ctx, 65)
 			assert.EqualError(t, err, testCase.expectedError)
 
 			mockArchive.AssertExpectations(t)
@@ -1076,6 +1077,7 @@ func TestCaptiveGetLedgerTerminatedUnexpectedly(t *testing.T) {
 }
 
 func TestCaptiveUseOfLedgerHashStore(t *testing.T) {
+	ctx := context.Background()
 	mockArchive := &historyarchive.MockArchive{}
 	mockArchive.
 		On("GetLedgerHeader", uint32(255)).
@@ -1086,15 +1088,15 @@ func TestCaptiveUseOfLedgerHashStore(t *testing.T) {
 		}, nil)
 
 	mockLedgerHashStore := &MockLedgerHashStore{}
-	mockLedgerHashStore.On("GetLedgerHash", uint32(1022)).
+	mockLedgerHashStore.On("GetLedgerHash", ctx, uint32(1022)).
 		Return("", false, fmt.Errorf("transient error")).Once()
-	mockLedgerHashStore.On("GetLedgerHash", uint32(254)).
+	mockLedgerHashStore.On("GetLedgerHash", ctx, uint32(254)).
 		Return("", false, nil).Once()
-	mockLedgerHashStore.On("GetLedgerHash", uint32(62)).
+	mockLedgerHashStore.On("GetLedgerHash", ctx, uint32(62)).
 		Return("cde", true, nil).Once()
-	mockLedgerHashStore.On("GetLedgerHash", uint32(126)).
+	mockLedgerHashStore.On("GetLedgerHash", ctx, uint32(126)).
 		Return("ghi", true, nil).Once()
-	mockLedgerHashStore.On("GetLedgerHash", uint32(2)).
+	mockLedgerHashStore.On("GetLedgerHash", ctx, uint32(2)).
 		Return("mnb", true, nil).Once()
 
 	cancelCalled := false
@@ -1107,28 +1109,28 @@ func TestCaptiveUseOfLedgerHashStore(t *testing.T) {
 		}),
 	}
 
-	runFrom, ledgerHash, nextLedger, err := captiveBackend.runFromParams(24)
+	runFrom, ledgerHash, nextLedger, err := captiveBackend.runFromParams(ctx, 24)
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(2), runFrom)
 	assert.Equal(t, "mnb", ledgerHash)
 	assert.Equal(t, uint32(2), nextLedger)
 
-	runFrom, ledgerHash, nextLedger, err = captiveBackend.runFromParams(86)
+	runFrom, ledgerHash, nextLedger, err = captiveBackend.runFromParams(ctx, 86)
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(62), runFrom)
 	assert.Equal(t, "cde", ledgerHash)
 	assert.Equal(t, uint32(2), nextLedger)
 
-	runFrom, ledgerHash, nextLedger, err = captiveBackend.runFromParams(128)
+	runFrom, ledgerHash, nextLedger, err = captiveBackend.runFromParams(ctx, 128)
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(126), runFrom)
 	assert.Equal(t, "ghi", ledgerHash)
 	assert.Equal(t, uint32(64), nextLedger)
 
-	runFrom, ledgerHash, nextLedger, err = captiveBackend.runFromParams(1050)
+	runFrom, ledgerHash, nextLedger, err = captiveBackend.runFromParams(ctx, 1050)
 	assert.EqualError(t, err, "error trying to read ledger hash 1022: transient error")
 
-	runFrom, ledgerHash, nextLedger, err = captiveBackend.runFromParams(300)
+	runFrom, ledgerHash, nextLedger, err = captiveBackend.runFromParams(ctx, 300)
 	assert.NoError(t, err)
 	assert.Equal(t, uint32(254), runFrom, "runFrom")
 	assert.Equal(t, "0101010100000000000000000000000000000000000000000000000000000000", ledgerHash)
@@ -1186,7 +1188,8 @@ func TestCaptiveRunFromParams(t *testing.T) {
 				checkpointManager: historyarchive.NewCheckpointManager(64),
 			}
 
-			runFrom, ledgerHash, nextLedger, err := captiveBackend.runFromParams(tc.from)
+			ctx := context.Background()
+			runFrom, ledgerHash, nextLedger, err := captiveBackend.runFromParams(ctx, tc.from)
 			tt.NoError(err)
 			tt.Equal(tc.runFrom, runFrom, "runFrom")
 			tt.Equal("0101010100000000000000000000000000000000000000000000000000000000", ledgerHash)
@@ -1294,9 +1297,9 @@ func TestCaptivePreviousLedgerCheck(t *testing.T) {
 		}, nil).Once()
 
 	mockLedgerHashStore := &MockLedgerHashStore{}
-	mockLedgerHashStore.On("GetLedgerHash", uint32(254)).
+	mockLedgerHashStore.On("GetLedgerHash", ctx, uint32(254)).
 		Return("", false, nil).Once()
-	mockLedgerHashStore.On("GetLedgerHash", uint32(191)).
+	mockLedgerHashStore.On("GetLedgerHash", ctx, uint32(191)).
 		Return("0200000000000000000000000000000000000000000000000000000000000000", true, nil).Once()
 
 	captiveBackend := CaptiveStellarCore{
@@ -1308,17 +1311,16 @@ func TestCaptivePreviousLedgerCheck(t *testing.T) {
 		checkpointManager: historyarchive.NewCheckpointManager(64),
 	}
 
-	err := captiveBackend.PrepareRange(UnboundedRange(300))
+	err := captiveBackend.PrepareRange(ctx, UnboundedRange(300))
 	assert.NoError(t, err)
 
-	exists, meta, err := captiveBackend.GetLedger(300)
+	meta, err := captiveBackend.GetLedger(ctx, 300)
 	assert.NoError(t, err)
-	assert.True(t, exists)
 	assert.NotNil(t, captiveBackend.previousLedgerHash)
 	assert.Equal(t, uint32(301), captiveBackend.nextLedger)
 	assert.Equal(t, meta.LedgerHash().HexString(), *captiveBackend.previousLedgerHash)
 
-	_, _, err = captiveBackend.GetLedger(301)
+	_, err = captiveBackend.GetLedger(ctx, 301)
 	assert.EqualError(t, err, "unexpected previous ledger hash for ledger 301 (expected=6f00000000000000000000000000000000000000000000000000000000000000 actual=0000000000000000000000000000000000000000000000000000000000000000)")
 
 	mockRunner.AssertExpectations(t)
