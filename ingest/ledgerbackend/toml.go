@@ -122,11 +122,12 @@ func (p *placeholders) newPlaceholder(key string) string {
 	return placeHolder
 }
 
-func (p *placeholders) get(placeholder string) string {
-	if len(p.labels) == 0 {
-		return ""
+func (p *placeholders) get(placeholder string) (string, bool) {
+	if p.labels == nil {
+		return "", false
 	}
-	return p.labels[placeholder]
+	val, ok := p.labels[placeholder]
+	return val, ok
 }
 
 // CaptiveCoreToml represents a parsed captive core configuration.
@@ -171,16 +172,16 @@ func unflattenTables(text string, tablePlaceHolders *placeholders) string {
 
 	return re.ReplaceAllStringFunc(text, func(match string) string {
 		insideBrackets := match[1 : len(match)-1]
-		original := tablePlaceHolders.get(insideBrackets)
-		if len(original) == 0 {
+		original, ok := tablePlaceHolders.get(insideBrackets)
+		if !ok {
 			return match
 		}
 		return "[" + original + "]"
 	})
 }
 
-// Marshall serializes the CaptiveCoreToml into a toml document.
-func (c *CaptiveCoreToml) Marshall() ([]byte, error) {
+// Marshal serializes the CaptiveCoreToml into a toml document.
+func (c *CaptiveCoreToml) Marshal() ([]byte, error) {
 	var sb strings.Builder
 	sb.WriteString("# Generated file, do not edit\n")
 	encoder := toml.NewEncoder(&sb)
@@ -217,7 +218,7 @@ func (c *CaptiveCoreToml) unmarshal(data []byte) error {
 	historyEntries := map[string]History{}
 	// The toml library has trouble with nested tables so we need to flatten all nested
 	// QUORUM_SET and HISTORY tables as a workaround.
-	// In Marshall() we apply the inverse process to unflatten the nested tables.
+	// In Marshal() we apply the inverse process to unflatten the nested tables.
 	flattened, tablePlaceholders := flattenTables(string(data), []string{"QUORUM_SET", "HISTORY"})
 
 	data = []byte(flattened)
@@ -232,8 +233,8 @@ func (c *CaptiveCoreToml) unmarshal(data []byte) error {
 	}
 
 	for _, key := range tree.Keys() {
-		originalKey := tablePlaceholders.get(key)
-		if originalKey == "" {
+		originalKey, ok := tablePlaceholders.get(key)
+		if !ok {
 			continue
 		}
 
@@ -288,7 +289,7 @@ func NewCaptiveCoreTomlFromFile(configPath string, params CaptiveCoreTomlParams)
 	}
 
 	if err = captiveCoreToml.unmarshal(data); err != nil {
-		return nil, errors.Wrap(err, "could not unmarshall captive core toml")
+		return nil, errors.Wrap(err, "could not unmarshal captive core toml")
 	}
 
 	if err = captiveCoreToml.validate(params); err != nil {
@@ -323,18 +324,25 @@ func NewCaptiveCoreToml(params CaptiveCoreTomlParams) (*CaptiveCoreToml, error) 
 	return &captiveCoreToml, nil
 }
 
+func (c *CaptiveCoreToml) clone() (*CaptiveCoreToml, error) {
+	data, err := c.Marshal()
+	if err != nil {
+		return nil, errors.Wrap(err, "could not marshal toml")
+	}
+	var cloned CaptiveCoreToml
+	if err = cloned.unmarshal(data); err != nil {
+		return nil, errors.Wrap(err, "could not unmarshal captive core toml")
+	}
+	return &cloned, nil
+}
+
 // CatchupToml returns a new CaptiveCoreToml instance based off the existing
 // instance with some modifications which are suitable for running
 // the catchup command on captive core.
 func (c *CaptiveCoreToml) CatchupToml() (*CaptiveCoreToml, error) {
-	// clone the existing toml file
-	data, err := c.Marshall()
+	offline, err := c.clone()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not clone toml")
-	}
-	var offline CaptiveCoreToml
-	if err = offline.unmarshal(data); err != nil {
-		return nil, errors.Wrap(err, "could not unmarshall captive core toml")
 	}
 
 	offline.RunStandalone = true
@@ -353,7 +361,7 @@ func (c *CaptiveCoreToml) CatchupToml() (*CaptiveCoreToml, error) {
 			},
 		}
 	}
-	return &offline, nil
+	return offline, nil
 }
 
 func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {

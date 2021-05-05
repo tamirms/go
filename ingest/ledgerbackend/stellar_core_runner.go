@@ -147,7 +147,7 @@ func generateConfig(captiveCoreToml *CaptiveCoreToml, mode stellarCoreRunnerMode
 		return nil, errors.New("stellar-core append config file does not define any quorum set")
 	}
 
-	text, err := captiveCoreToml.Marshall()
+	text, err := captiveCoreToml.Marshal()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not marshal captive core config")
 	}

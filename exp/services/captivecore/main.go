@@ -14,7 +14,6 @@ import (
 	"github.com/stellar/go/ingest/ledgerbackend"
 	"github.com/stellar/go/network"
 	"github.com/stellar/go/support/config"
-	support "github.com/stellar/go/support/config"
 	"github.com/stellar/go/support/db"
 	supporthttp "github.com/stellar/go/support/http"
 	supportlog "github.com/stellar/go/support/log"
@@ -102,9 +101,9 @@ func main() {
 			Name:           "stellar-captive-core-http-port",
 			ConfigKey:      &captiveCoreTomlParams.HTTPPort,
 			OptType:        types.Uint,
-			CustomSetValue: support.SetOptionalUint,
+			CustomSetValue: config.SetOptionalUint,
 			Required:       false,
-			FlagDefault:    uint(0),
+			FlagDefault:    uint(11626),
 			Usage:          "HTTP port for Captive Core to listen on (0 disables the HTTP server)",
 		},
 		&config.ConfigOption{
