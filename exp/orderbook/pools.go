@@ -4,6 +4,8 @@ import (
 	"math"
 	"math/big"
 
+	"lukechampine.com/uint128"
+
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/xdr"
 )
@@ -128,8 +130,8 @@ func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, feeBips xdr.Int
 func calculatePoolExpectation(
 	reserveA, reserveB, disbursed xdr.Int64, feeBips xdr.Int32,
 ) (xdr.Int64, bool) {
-	X, Y := big.NewInt(int64(reserveA)), big.NewInt(int64(reserveB))
-	F, y := big.NewInt(int64(feeBips)), big.NewInt(int64(disbursed))
+	X, Y := uint128.From64(uint64(reserveA)), uint128.From64(uint64(reserveB))
+	F, y := uint128.From64(uint64(feeBips)), uint128.From64(uint64(disbursed))
 
 	// sanity check: disbursing shouldn't underflow the reserve
 	if disbursed >= reserveB {
@@ -137,25 +139,25 @@ func calculatePoolExpectation(
 	}
 
 	// We do all of the math in bips, so it's all upscaled by this value.
-	maxBips := big.NewInt(10000)
-	f := new(big.Int).Sub(maxBips, F) // upscaled 1 - F
+	maxBips := uint128.From64(10000)
+	f := maxBips.Sub(F) // upscaled 1 - F
 
-	denom := Y.Sub(Y, y).Mul(Y, f)     // right half: (Y - y)(1 - F)
-	if denom.Cmp(big.NewInt(0)) == 0 { // avoid div-by-zero panic
+	denom := Y.Sub(y).Mul(f) // right half: (Y - y)(1 - F)
+	if denom.Cmp64(0) == 0 { // avoid div-by-zero panic
 		return 0, false
 	}
 
-	numer := X.Mul(X, y).Mul(X, maxBips) // left half: Xy
+	numer := X.Mul(y).Mul(maxBips) // left half: Xy
 
-	result, rem := new(big.Int), new(big.Int)
-	result.DivMod(numer, denom, rem)
+	result := numer.Div(denom)
+	rem := numer.Mod(denom)
 
 	// hacky way to ceil(): if there's a remainder, add 1
-	if rem.Cmp(big.NewInt(0)) > 0 {
-		result.Add(result, big.NewInt(1))
+	if rem.Cmp64(0) > 0 {
+		result = result.Add64(1)
 	}
 
-	return xdr.Int64(result.Int64()), result.IsInt64()
+	return xdr.Int64(result.Lo), result.Hi != 0 && result.Lo <= math.MaxInt64
 }
 
 // getOtherAsset returns the other asset in the liquidity pool. Note that
