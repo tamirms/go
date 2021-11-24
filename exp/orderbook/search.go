@@ -125,6 +125,7 @@ func (p *pathNodeSlabAllocator) getPathNode() *pathNode {
 		// slab run out
 		nextSlabCap := 2*cap(p.slab) + 1
 		p.slab = make([]pathNode, nextSlabCap)
+		p.next = 0
 	}
 	ret := &p.slab[p.next]
 	p.next++
