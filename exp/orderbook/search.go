@@ -150,6 +150,7 @@ func search(
 		asset: sourceAsset,
 		prev:  nil,
 	}
+
 	var pathNodeAllocator pathNodeSlabAllocator
 	for i := 0; i < maxPathLength; i++ {
 		updatedAssets = updatedAssets[:0]
@@ -197,6 +198,7 @@ func search(
 						pN.asset = nextAsset
 						pN.prev = pathToCurrentAsset
 						updatePath[nextAsset] = pN
+						updatedAssets = append(updatedAssets, nextAsset)
 					} else {
 						updatePath[nextAsset].prev = pathToCurrentAsset
 					}
