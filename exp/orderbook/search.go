@@ -115,6 +115,22 @@ func (e *pathNode) path() []int32 {
 	return result
 }
 
+type pathNodeSlabAllocator struct {
+	slab []pathNode
+	next int
+}
+
+func (p *pathNodeSlabAllocator) getPathNode() *pathNode {
+	if p.next > len(p.slab)-1 {
+		// slab run out
+		nextSlabCap := 2*cap(p.slab) + 1
+		p.slab = make([]pathNode, nextSlabCap)
+	}
+	ret := &p.slab[p.next]
+	p.next++
+	return ret
+}
+
 func search(
 	ctx context.Context,
 	state searchState,
@@ -134,7 +150,7 @@ func search(
 		asset: sourceAsset,
 		prev:  nil,
 	}
-
+	var pathNodeAllocator pathNodeSlabAllocator
 	for i := 0; i < maxPathLength; i++ {
 		updatedAssets = updatedAssets[:0]
 
@@ -177,11 +193,10 @@ func search(
 					updateAmount[nextAsset] = nextAssetAmount
 
 					if newEntry {
-						updatePath[nextAsset] = &pathNode{
-							asset: nextAsset,
-							prev:  pathToCurrentAsset,
-						}
-						updatedAssets = append(updatedAssets, nextAsset)
+						pN := pathNodeAllocator.getPathNode()
+						pN.asset = nextAsset
+						pN.prev = pathToCurrentAsset
+						updatePath[nextAsset] = pN
 					} else {
 						updatePath[nextAsset].prev = pathToCurrentAsset
 					}
