@@ -128,6 +128,7 @@ func search(
 	bestPath := make([]*pathNode, totalAssets)
 	updatePath := make([]*pathNode, totalAssets)
 	updatedAssets := make([]int32, 0, totalAssets)
+	// Used to minimize allocations
 	slab := make([]pathNode, 0, totalAssets)
 	bestAmount[sourceAsset] = sourceAssetAmount
 	updateAmount[sourceAsset] = sourceAssetAmount
