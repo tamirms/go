@@ -115,23 +115,6 @@ func (e *pathNode) path() []int32 {
 	return result
 }
 
-type pathNodeSlabAllocator struct {
-	slab []pathNode
-	next int
-}
-
-func (p *pathNodeSlabAllocator) getPathNode() *pathNode {
-	if p.next > len(p.slab)-1 {
-		// slab run out
-		nextSlabCap := 2*cap(p.slab) + 1
-		p.slab = make([]pathNode, nextSlabCap)
-		p.next = 0
-	}
-	ret := &p.slab[p.next]
-	p.next++
-	return ret
-}
-
 func search(
 	ctx context.Context,
 	state searchState,
@@ -145,6 +128,7 @@ func search(
 	bestPath := make([]*pathNode, totalAssets)
 	updatePath := make([]*pathNode, totalAssets)
 	updatedAssets := make([]int32, 0, totalAssets)
+	slab := make([]pathNode, 0, totalAssets)
 	bestAmount[sourceAsset] = sourceAssetAmount
 	updateAmount[sourceAsset] = sourceAssetAmount
 	bestPath[sourceAsset] = &pathNode{
@@ -152,7 +136,6 @@ func search(
 		prev:  nil,
 	}
 
-	var pathNodeAllocator pathNodeSlabAllocator
 	for i := 0; i < maxPathLength; i++ {
 		updatedAssets = updatedAssets[:0]
 
@@ -195,10 +178,11 @@ func search(
 					updateAmount[nextAsset] = nextAssetAmount
 
 					if newEntry {
-						pN := pathNodeAllocator.getPathNode()
-						pN.asset = nextAsset
-						pN.prev = pathToCurrentAsset
-						updatePath[nextAsset] = pN
+						slab = append(slab, pathNode{
+							asset: nextAsset,
+							prev:  pathToCurrentAsset,
+						})
+						updatePath[nextAsset] = &slab[len(slab)-1]
 						updatedAssets = append(updatedAssets, nextAsset)
 					} else {
 						updatePath[nextAsset].prev = pathToCurrentAsset
