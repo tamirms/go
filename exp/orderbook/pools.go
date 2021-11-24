@@ -91,8 +91,9 @@ func makeTrade(
 //
 // It returns false if the calculation overflows.
 func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, feeBips xdr.Int32) (xdr.Int64, bool) {
-	X, Y := big.NewInt(int64(reserveA)), big.NewInt(int64(reserveB))
-	F, x := big.NewInt(int64(feeBips)), big.NewInt(int64(received))
+	ints := [7]big.Int{}
+	X, Y := ints[0].SetInt64(int64(reserveA)), ints[1].SetInt64(int64(reserveB))
+	F, x := ints[2].SetInt64(int64(feeBips)), ints[3].SetInt64(int64(received))
 
 	// would this deposit overflow the reserve?
 	if received > math.MaxInt64-reserveA {
@@ -101,11 +102,11 @@ func calculatePoolPayout(reserveA, reserveB, received xdr.Int64, feeBips xdr.Int
 
 	// We do all of the math in bips, so it's all upscaled by this value.
 	maxBips := big.NewInt(10000)
-	f := new(big.Int).Sub(maxBips, F) // upscaled 1 - F
+	f := ints[4].Sub(maxBips, F) // upscaled 1 - F
 
 	// right half: X + (1 - F)x
-	denom := X.Mul(X, maxBips).Add(X, new(big.Int).Mul(x, f))
-	if denom.Cmp(big.NewInt(0)) == 0 { // avoid div-by-zero panic
+	denom := X.Mul(X, maxBips).Add(X, ints[5].Mul(x, f))
+	if denom.Cmp(&ints[6]) == 0 { // avoid div-by-zero panic
 		return 0, false
 	}
 
