@@ -129,6 +129,22 @@ func (e *pathNode) path() []xdr.Asset {
 	return result
 }
 
+type pathNodeSlabAllocator struct {
+	slab []pathNode
+	next int
+}
+
+func (p *pathNodeSlabAllocator) getPathNode() *pathNode {
+	if p.next > len(p.slab)-1 {
+		// slab run out
+		nextSlabCap := 2*cap(p.slab) + 1
+		p.slab = make([]pathNode, nextSlabCap)
+	}
+	ret := &p.slab[p.next]
+	p.next++
+	return ret
+}
+
 func search(
 	ctx context.Context,
 	state searchState,
@@ -145,8 +161,11 @@ func search(
 		prev:        nil,
 	}}
 
+	updatePath := map[string]*pathNode{}
+	var pathNodeAllocator pathNodeSlabAllocator
 	for i := 0; i < maxPathLength; i++ {
-		updatePath := map[string]*pathNode{}
+		// Avoid allocating a new map in every iteration
+		updatePath = make(map[string]*pathNode, len(updatePath))
 
 		for currentAssetString, currentAmount := range bestAmount {
 			pathToCurrentAsset := bestPath[currentAssetString]
@@ -185,11 +204,11 @@ func search(
 					if pathToNext, ok := updatePath[nextAssetString]; ok {
 						pathToNext.prev = pathToCurrentAsset
 					} else {
-						updatePath[nextAssetString] = &pathNode{
-							assetString: nextAssetString,
-							asset:       nextAsset,
-							prev:        pathToCurrentAsset,
-						}
+						pN := pathNodeAllocator.getPathNode()
+						pN.assetString = nextAssetString
+						pN.asset = nextAsset
+						pN.prev = pathToCurrentAsset
+						updatePath[nextAssetString] = pN
 					}
 
 					// We could avoid this step until the last iteration, but we would
