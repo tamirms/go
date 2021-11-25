@@ -5,6 +5,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/stellar/go/strkey"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/xdr"
 )
@@ -74,6 +75,8 @@ type OrderBookGraph struct {
 	lock           sync.RWMutex
 	// the orderbook graph is accurate up to lastLedger
 	lastLedger uint32
+
+	strkeyEncoder *strkey.Encoder
 }
 
 var _ OBGraph = (*OrderBookGraph)(nil)
@@ -81,6 +84,7 @@ var _ OBGraph = (*OrderBookGraph)(nil)
 // NewOrderBookGraph constructs an empty OrderBookGraph
 func NewOrderBookGraph() *OrderBookGraph {
 	graph := &OrderBookGraph{}
+	graph.strkeyEncoder = strkey.NewEncoder()
 	graph.Clear()
 	return graph
 }
@@ -377,6 +381,23 @@ func (graph *OrderBookGraph) FindPaths(
 	return paths, lastLedger, err
 }
 
+type sortablePaths struct {
+	paths []Path
+	less  func(paths []Path, i, j int) bool
+}
+
+func (s sortablePaths) Swap(i, j int) {
+	s.paths[i], s.paths[j] = s.paths[j], s.paths[i]
+}
+
+func (s sortablePaths) Less(i, j int) bool {
+	return s.less(s.paths, i, j)
+}
+
+func (s sortablePaths) Len() int {
+	return len(s.paths)
+}
+
 // FindFixedPaths returns a list of payment paths where the source and
 // destination assets are fixed.
 //
@@ -396,16 +417,19 @@ func (graph *OrderBookGraph) FindFixedPaths(
 ) ([]Path, uint32, error) {
 	target := make(map[int32]bool, len(destinationAssets))
 	for _, destinationAsset := range destinationAssets {
-		destinationAssetString := destinationAsset.String()
+		destinationAssetString := destinationAsset.StringWithEncoder(graph.strkeyEncoder)
 		target[graph.assetStringToID[destinationAssetString]] = true
 	}
 
+	// Initialize the capacity of paths to minimize allocations
+	// TODO: choose value wisely
+	pathsWithCapacity := make([]Path, 0, 64)
 	searchState := &buyingGraphSearchState{
 		graph:             graph,
-		sourceAssetString: sourceAsset.String(),
+		sourceAssetString: sourceAsset.StringWithEncoder(graph.strkeyEncoder),
 		sourceAssetAmount: amountToSpend,
 		targetAssets:      target,
-		paths:             []Path{},
+		paths:             pathsWithCapacity,
 		includePools:      includePools,
 	}
 	graph.lock.RLock()
@@ -413,7 +437,7 @@ func (graph *OrderBookGraph) FindFixedPaths(
 		ctx,
 		searchState,
 		maxPathLength,
-		graph.assetStringToID[sourceAsset.String()],
+		graph.assetStringToID[sourceAsset.StringWithEncoder(graph.strkeyEncoder)],
 		amountToSpend,
 	)
 	lastLedger := graph.lastLedger
@@ -422,9 +446,11 @@ func (graph *OrderBookGraph) FindFixedPaths(
 		return nil, lastLedger, errors.Wrap(err, "could not determine paths")
 	}
 
-	sort.Slice(searchState.paths, func(i, j int) bool {
-		return searchState.paths[i].DestinationAmount > searchState.paths[j].DestinationAmount
-	})
+	sPaths := sortablePaths{
+		paths: searchState.paths,
+		less:  compareDestinationAmount,
+	}
+	sort.Sort(sPaths)
 
 	paths, err := sortAndFilterPaths(
 		searchState.paths,
@@ -462,6 +488,10 @@ func compareDestinationAsset(allPaths []Path, i, j int) bool {
 	return allPaths[i].DestinationAsset < allPaths[j].DestinationAsset
 }
 
+func compareDestinationAmount(allPaths []Path, i, j int) bool {
+	return allPaths[i].DestinationAmount > allPaths[j].DestinationAmount
+}
+
 func sourceAssetEquals(p, otherPath Path) bool {
 	return p.SourceAsset == otherPath.SourceAsset
 }
@@ -491,11 +521,13 @@ func sortAndFilterPaths(
 		return nil, errors.New("invalid sort by type")
 	}
 
-	sort.Slice(allPaths, func(i, j int) bool {
-		return comparePaths(allPaths, i, j)
-	})
+	sPaths := sortablePaths{
+		paths: allPaths,
+		less:  comparePaths,
+	}
+	sort.Sort(sPaths)
 
-	filtered := []Path{}
+	filtered := make([]Path, 0, len(allPaths))
 	countForAsset := 0
 	for _, entry := range allPaths {
 		if len(filtered) == 0 || !assetsEqual(filtered[len(filtered)-1], entry) {
