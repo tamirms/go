@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"github.com/stellar/go/xdr"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 
@@ -54,7 +56,19 @@ func main() {
 
 	var latestLedger uint32
 	gcsBucket := client.Bucket(bucket)
-	latestLedger = readLatestLedger(gcsBucket)
+	latestLedger, err = readLatestLedger(gcsBucket)
+	if err != nil {
+		logger.WithError(err).Fatal("could not read latest ledger")
+	}
+
+	//startTime := time.Now()
+	//target := time.Unix(1639647957, 0)
+	//seq, err := timeToLedger(gcsBucket, target)
+	//duration := time.Now().Sub(startTime)
+	//if err != nil {
+	//	logger.WithError(err).WithField("duration", duration).Fatal("could not find ledger for timestamp")
+	//}
+	//fmt.Printf("duration %v latest %v timestampToLedger %v\n", duration, latestLedger, seq)
 
 	nextLedger := latestLedger + 1
 	if err := core.PrepareRange(context.Background(), ledgerbackend.UnboundedRange(latestLedger)); err != nil {
@@ -82,25 +96,71 @@ func main() {
 
 }
 
-func readLatestLedger(gcsBucket *storage.BucketHandle) uint32 {
+func readLatestLedger(gcsBucket *storage.BucketHandle) (uint32, error) {
 	r, err := gcsBucket.Object("latest").NewReader(context.Background())
 	if err == storage.ErrObjectNotExist {
-		return 2
+		return 2, nil
 	} else if err != nil {
-		logger.WithError(err).Fatal("could not open latest ledger bucket")
+		return 0, err
 	} else {
 		defer r.Close()
 		var buf bytes.Buffer
 		if _, err := io.Copy(&buf, r); err != nil {
-			logger.WithError(err).Fatal("could not read latest ledger")
+			return 0, err
 		}
 		if parsed, err := strconv.ParseUint(buf.String(), 10, 32); err != nil {
-			logger.WithError(err).Fatalf("could not parse latest ledger: %s", buf.String())
+			return 0, err
 		} else {
-			return uint32(parsed)
+			return uint32(parsed), nil
 		}
 	}
-	return 0
+}
+
+func timeToLedger(gcsBucket *storage.BucketHandle, timestamp time.Time) (uint32, error) {
+	latest, err := readLatestLedger(gcsBucket)
+	if err != nil {
+		return 0, err
+	}
+	if latest < 3 {
+		return 0, fmt.Errorf("not enough ledgers")
+	}
+	upper := int(latest-2)
+	backend := ledgerbackend.GCSBackend{Bucket: gcsBucket}
+	var lcm xdr.LedgerCloseMeta
+	count := 0
+	result := sort.Search(upper, func(i int) bool {
+		if err != nil {
+			return false
+		}
+		count++
+		ledger := uint32(i + 3)
+		lcm, err = backend.GetLedger(context.Background(), ledger)
+		if err != nil {
+			return false
+		}
+		closeTime := time.Unix(int64(lcm.MustV0().LedgerHeader.Header.ScpValue.CloseTime), 0).UTC()
+		return !closeTime.Before(timestamp)
+	})
+	if err != nil {
+		return 0, err
+	}
+	if result >= upper {
+		return 0, fmt.Errorf("timestamp is after latest sequence")
+	}
+	if result == 0 {
+		lcm, err = backend.GetLedger(context.Background(), 3)
+		if err != nil {
+			return 0, err
+		}
+		count++
+		closeTime := time.Unix(int64(lcm.MustV0().LedgerHeader.Header.ScpValue.CloseTime), 0).UTC()
+		if closeTime.After(timestamp) {
+			return 0, fmt.Errorf("timestamp is before genesis ledger")
+		}
+	}
+
+	fmt.Printf("number of get leger calls %v\n", count)
+	return uint32(result+3), err
 }
 
 func writeLedger(gcsBucket *storage.BucketHandle, leddger xdr.LedgerCloseMeta) error {

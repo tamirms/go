@@ -1,8 +1,11 @@
 package httpx
 
 import (
+	"cloud.google.com/go/storage"
 	"compress/flate"
+	"context"
 	"fmt"
+	"github.com/stellar/go/ingest/ledgerbackend"
 	"net/http"
 	"net/http/pprof"
 	"net/url"
@@ -54,6 +57,10 @@ type Router struct {
 	Internal *chi.Mux
 }
 
+const (
+	bucket = "horizon-archive-poc"
+)
+
 func NewRouter(config *RouterConfig, serverMetrics *ServerMetrics, ledgerState *ledger.State) (*Router, error) {
 	result := Router{
 		Mux:      chi.NewMux(),
@@ -67,8 +74,13 @@ func NewRouter(config *RouterConfig, serverMetrics *ServerMetrics, ledgerState *
 			return nil, fmt.Errorf("unable to create RateLimiter: %v", err)
 		}
 	}
+	client, err := storage.NewClient(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	backend := ledgerbackend.GCSBackend{Bucket: client.Bucket(bucket)}
 	result.addMiddleware(config, rateLimiter, serverMetrics)
-	result.addRoutes(config, rateLimiter, ledgerState)
+	result.addRoutes(config, rateLimiter, ledgerState, backend)
 	return &result, nil
 }
 
@@ -127,7 +139,7 @@ func (r *Router) addMiddleware(config *RouterConfig,
 	r.Internal.Use(loggerMiddleware(serverMetrics))
 }
 
-func (r *Router) addRoutes(config *RouterConfig, rateLimiter *throttled.HTTPRateLimiter, ledgerState *ledger.State) {
+func (r *Router) addRoutes(config *RouterConfig, rateLimiter *throttled.HTTPRateLimiter, ledgerState *ledger.State, backend ledgerbackend.LedgerBackend) {
 	stateMiddleware := StateMiddleware{
 		HorizonSession: config.DBSession,
 	}
@@ -183,7 +195,7 @@ func (r *Router) addRoutes(config *RouterConfig, rateLimiter *throttled.HTTPRate
 					LedgerState:  ledgerState,
 					OnlyPayments: false,
 				}, streamHandler))
-				r.With(historyMiddleware).Method(http.MethodGet, "/transactions", streamableHistoryPageHandler(ledgerState, actions.GetTransactionsHandler{LedgerState: ledgerState}, streamHandler))
+				r.With(historyMiddleware).Method(http.MethodGet, "/transactions", streamableHistoryPageHandler(ledgerState, actions.GetTransactionsHandler{Backend: backend, NetworkPassphrase: config.NetworkPassphrase}, streamHandler))
 				r.With(historyMiddleware).Method(http.MethodGet, "/effects", streamableHistoryPageHandler(ledgerState, actions.GetEffectsHandler{LedgerState: ledgerState}, streamHandler))
 				r.With(historyMiddleware).Method(http.MethodGet, "/trades", streamableHistoryPageHandler(ledgerState, actions.GetTradesHandler{LedgerState: ledgerState, CoreStateGetter: config.CoreGetter}, streamHandler))
 			})
@@ -236,14 +248,14 @@ func (r *Router) addRoutes(config *RouterConfig, rateLimiter *throttled.HTTPRate
 			OnlyPayments: true,
 		}, streamHandler))
 		r.With(historyMiddleware).Method(http.MethodGet, "/accounts/{account_id:\\w+}/trades", streamableHistoryPageHandler(ledgerState, actions.GetTradesHandler{LedgerState: ledgerState, CoreStateGetter: config.CoreGetter}, streamHandler))
-		r.With(historyMiddleware).Method(http.MethodGet, "/accounts/{account_id:\\w+}/transactions", streamableHistoryPageHandler(ledgerState, actions.GetTransactionsHandler{LedgerState: ledgerState}, streamHandler))
+		r.With(historyMiddleware).Method(http.MethodGet, "/accounts/{account_id:\\w+}/transactions", streamableHistoryPageHandler(ledgerState, actions.GetTransactionsHandler{Backend: backend, NetworkPassphrase: config.NetworkPassphrase}, streamHandler))
 	})
 	// ledger actions
 	r.Route("/ledgers", func(r chi.Router) {
 		r.With(historyMiddleware).Method(http.MethodGet, "/", streamableHistoryPageHandler(ledgerState, actions.GetLedgersHandler{LedgerState: ledgerState}, streamHandler))
 		r.Route("/{ledger_id}", func(r chi.Router) {
-			r.With(historyMiddleware).Method(http.MethodGet, "/", ObjectActionHandler{actions.GetLedgerByIDHandler{LedgerState: ledgerState}})
-			r.With(historyMiddleware).Method(http.MethodGet, "/transactions", streamableHistoryPageHandler(ledgerState, actions.GetTransactionsHandler{LedgerState: ledgerState}, streamHandler))
+			r.With(historyMiddleware).Method(http.MethodGet, "/", ObjectActionHandler{actions.GetLedgerByIDHandler{Backend: backend, NetworkPassphrase: config.NetworkPassphrase}})
+			r.With(historyMiddleware).Method(http.MethodGet, "/transactions", streamableHistoryPageHandler(ledgerState, actions.GetTransactionsHandler{Backend: backend, NetworkPassphrase: config.NetworkPassphrase}, streamHandler))
 			r.Group(func(r chi.Router) {
 				r.With(historyMiddleware).Method(http.MethodGet, "/effects", streamableHistoryPageHandler(ledgerState, actions.GetEffectsHandler{LedgerState: ledgerState}, streamHandler))
 				r.With(historyMiddleware).Method(http.MethodGet, "/operations", streamableHistoryPageHandler(ledgerState, actions.GetOperationsHandler{
@@ -264,12 +276,12 @@ func (r *Router) addRoutes(config *RouterConfig, rateLimiter *throttled.HTTPRate
 			LedgerState:  ledgerState,
 			OnlyPayments: false,
 		}, streamHandler))
-		r.With(historyMiddleware).Method(http.MethodGet, "/claimable_balances/{claimable_balance_id:\\w+}/transactions", streamableHistoryPageHandler(ledgerState, actions.GetTransactionsHandler{LedgerState: ledgerState}, streamHandler))
+		r.With(historyMiddleware).Method(http.MethodGet, "/claimable_balances/{claimable_balance_id:\\w+}/transactions", streamableHistoryPageHandler(ledgerState, actions.GetTransactionsHandler{Backend: backend, NetworkPassphrase: config.NetworkPassphrase}, streamHandler))
 	})
 
 	// transaction history actions
 	r.Route("/transactions", func(r chi.Router) {
-		r.With(historyMiddleware).Method(http.MethodGet, "/", streamableHistoryPageHandler(ledgerState, actions.GetTransactionsHandler{LedgerState: ledgerState}, streamHandler))
+		r.With(historyMiddleware).Method(http.MethodGet, "/", streamableHistoryPageHandler(ledgerState, actions.GetTransactionsHandler{Backend: backend, NetworkPassphrase: config.NetworkPassphrase}, streamHandler))
 		r.Route("/{tx_id}", func(r chi.Router) {
 			r.With(historyMiddleware).Method(http.MethodGet, "/", ObjectActionHandler{actions.GetTransactionByHashHandler{}})
 			r.With(historyMiddleware).Method(http.MethodGet, "/effects", streamableHistoryPageHandler(ledgerState, actions.GetEffectsHandler{LedgerState: ledgerState}, streamHandler))

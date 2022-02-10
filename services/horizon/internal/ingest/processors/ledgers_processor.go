@@ -2,6 +2,10 @@ package processors
 
 import (
 	"context"
+	"encoding/hex"
+	"github.com/guregu/null"
+	"github.com/stellar/go/services/horizon/internal/toid"
+	"time"
 
 	"github.com/stellar/go/ingest"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
@@ -71,4 +75,39 @@ func (p *LedgersProcessor) Commit(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (p *LedgersProcessor) LedgerRow() (history.Ledger, error) {
+	ledgerHeaderBase64, err := xdr.MarshalBase64(p.ledger.Header)
+	if err != nil {
+		return history.Ledger{}, err
+	}
+	closeTime := time.Unix(int64(p.ledger.Header.ScpValue.CloseTime), 0).UTC()
+
+	l := history.Ledger{
+		Sequence:                   int32(p.ledger.Header.LedgerSeq),
+		ImporterVersion:            int32(p.ingestVersion),
+		LedgerHash:                 hex.EncodeToString(p.ledger.Hash[:]),
+		PreviousLedgerHash:         null.NewString(hex.EncodeToString(p.ledger.Header.PreviousLedgerHash[:]), p.ledger.Header.LedgerSeq > 1),
+		TransactionCount:           int32(p.successTxCount),
+		SuccessfulTransactionCount: new(int32),
+		FailedTransactionCount:     new(int32),
+		OperationCount:             int32(p.opCount),
+		TxSetOperationCount:        new(int32),
+		ClosedAt:                   closeTime,
+		CreatedAt:                  closeTime,
+		UpdatedAt:                  closeTime,
+		TotalCoins:                 int64(p.ledger.Header.TotalCoins),
+		FeePool:                    int64(p.ledger.Header.FeePool),
+		BaseFee:                    int32(p.ledger.Header.BaseFee),
+		BaseReserve:                int32(p.ledger.Header.BaseReserve),
+		MaxTxSetSize:               int32(p.ledger.Header.MaxTxSetSize),
+		ProtocolVersion:            int32(p.ledger.Header.LedgerVersion),
+		LedgerHeaderXDR:            null.NewString(ledgerHeaderBase64, true),
+	}
+	*l.SuccessfulTransactionCount = int32(p.successTxCount)
+	*l.FailedTransactionCount = int32(p.failedTxCount)
+	*l.TxSetOperationCount = int32(p.txSetOpCount)
+	l.TotalOrderID.ID = toid.New(int32(p.ledger.Header.LedgerSeq), 0, 0).ToInt64()
+	return l, nil
 }

@@ -1,13 +1,17 @@
 package actions
 
 import (
+	"github.com/stellar/go/ingest"
+	"github.com/stellar/go/ingest/ledgerbackend"
+	horizoningest "github.com/stellar/go/services/horizon/internal/ingest"
+
+	"github.com/stellar/go/services/horizon/internal/ingest/processors"
 	"net/http"
 
 	"github.com/stellar/go/protocols/horizon"
 	"github.com/stellar/go/services/horizon/internal/context"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
 	"github.com/stellar/go/services/horizon/internal/ledger"
-	"github.com/stellar/go/services/horizon/internal/render/problem"
 	"github.com/stellar/go/services/horizon/internal/resourceadapter"
 	"github.com/stellar/go/support/render/hal"
 )
@@ -56,7 +60,8 @@ type LedgerByIDQuery struct {
 }
 
 type GetLedgerByIDHandler struct {
-	LedgerState *ledger.State
+	Backend ledgerbackend.LedgerBackend
+	NetworkPassphrase string
 }
 
 func (handler GetLedgerByIDHandler) GetResource(w HeaderWriter, r *http.Request) (interface{}, error) {
@@ -65,15 +70,26 @@ func (handler GetLedgerByIDHandler) GetResource(w HeaderWriter, r *http.Request)
 	if err != nil {
 		return nil, err
 	}
-	if int32(qp.LedgerID) < handler.LedgerState.CurrentStatus().HistoryElder {
-		return nil, problem.BeforeHistory
-	}
+
 	historyQ, err := context.HistoryQFromRequest(r)
 	if err != nil {
 		return nil, err
 	}
-	var ledger history.Ledger
-	err = historyQ.LedgerBySequence(r.Context(), &ledger, int32(qp.LedgerID))
+	lcm, err := handler.Backend.GetLedger(r.Context(), qp.LedgerID)
+	if err != nil {
+		return nil, err
+	}
+
+	transactionReader, err := ingest.NewLedgerTransactionReaderFromLedgerCloseMeta(handler.NetworkPassphrase, lcm)
+	if err != nil {
+		return nil, err
+	}
+
+	processor := processors.NewLedgerProcessor(historyQ, lcm.MustV0().LedgerHeader, horizoningest.CurrentVersion)
+	if err := processors.StreamLedgerTransactions(r.Context(), processor, transactionReader); err != nil {
+		return nil, err
+	}
+	ledger, err := processor.LedgerRow()
 	if err != nil {
 		return nil, err
 	}

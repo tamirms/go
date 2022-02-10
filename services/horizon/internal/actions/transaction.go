@@ -2,13 +2,16 @@ package actions
 
 import (
 	"context"
+	"github.com/stellar/go/ingest"
+	"github.com/stellar/go/ingest/ledgerbackend"
+	"github.com/stellar/go/services/horizon/internal/ingest/processors"
 	"net/http"
+	"time"
 
 	"github.com/stellar/go/protocols/horizon"
 	horizonContext "github.com/stellar/go/services/horizon/internal/context"
 	"github.com/stellar/go/services/horizon/internal/db2"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
-	"github.com/stellar/go/services/horizon/internal/ledger"
 	"github.com/stellar/go/services/horizon/internal/resourceadapter"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/support/render/hal"
@@ -89,25 +92,27 @@ func (qp TransactionsQuery) Validate() error {
 
 // GetTransactionsHandler is the action handler for all end-points returning a list of transactions.
 type GetTransactionsHandler struct {
-	LedgerState *ledger.State
+	//LedgerState *ledger.State
+	Backend ledgerbackend.LedgerBackend
+	NetworkPassphrase string
 }
 
 // GetResourcePage returns a page of transactions.
 func (handler GetTransactionsHandler) GetResourcePage(w HeaderWriter, r *http.Request) ([]hal.Pageable, error) {
 	ctx := r.Context()
 
-	pq, err := GetPageQuery(handler.LedgerState, r)
-	if err != nil {
-		return nil, err
-	}
-
-	err = validateCursorWithinHistory(handler.LedgerState, pq)
-	if err != nil {
-		return nil, err
-	}
+	//pq, err := GetPageQuery(handler.LedgerState, r)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//
+	//err = validateCursorWithinHistory(handler.LedgerState, pq)
+	//if err != nil {
+	//	return nil, err
+	//}
 
 	qp := TransactionsQuery{}
-	err = getParams(&qp, r)
+	err := getParams(&qp, r)
 	if err != nil {
 		return nil, err
 	}
@@ -117,9 +122,27 @@ func (handler GetTransactionsHandler) GetResourcePage(w HeaderWriter, r *http.Re
 		return nil, err
 	}
 
-	records, err := loadTransactionRecords(ctx, historyQ, qp, pq)
+	lcm, err := handler.Backend.GetLedger(r.Context(), qp.LedgerID)
 	if err != nil {
-		return nil, errors.Wrap(err, "loading transaction records")
+		return nil, err
+	}
+	transactionReader, err := ingest.NewLedgerTransactionReaderFromLedgerCloseMeta(handler.NetworkPassphrase, lcm)
+	if err != nil {
+		return nil, err
+	}
+
+	processor := processors.NewTransactionProcessor(historyQ, uint32(lcm.MustV0().LedgerHeader.Header.LedgerSeq))
+	if err := processors.StreamLedgerTransactions(r.Context(), processor, transactionReader); err != nil {
+		return nil, err
+	}
+	var records []history.Transaction
+	closeTime := time.Unix(int64(lcm.MustV0().LedgerHeader.Header.ScpValue.CloseTime), 0).UTC()
+
+	for _, row := range processor.Rows() {
+		records =append(records, history.Transaction{
+			LedgerCloseTime:          closeTime,
+			TransactionWithoutLedger: row,
+		})
 	}
 
 	var response []hal.Pageable

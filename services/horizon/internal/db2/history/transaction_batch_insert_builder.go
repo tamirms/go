@@ -27,12 +27,14 @@ import (
 type TransactionBatchInsertBuilder interface {
 	Add(ctx context.Context, transaction ingest.LedgerTransaction, sequence uint32) error
 	Exec(ctx context.Context) error
+	Rows() []TransactionWithoutLedger
 }
 
 // transactionBatchInsertBuilder is a simple wrapper around db.BatchInsertBuilder
 type transactionBatchInsertBuilder struct {
 	encodingBuffer *xdr.EncodingBuffer
 	builder        db.BatchInsertBuilder
+	rows []TransactionWithoutLedger
 }
 
 // NewTransactionBatchInsertBuilder constructs a new TransactionBatchInsertBuilder instance
@@ -53,10 +55,16 @@ func (i *transactionBatchInsertBuilder) Add(ctx context.Context, transaction ing
 		return err
 	}
 
+	i.rows = append(i.rows, row)
 	return i.builder.RowStruct(ctx, row)
 }
 
+func (i *transactionBatchInsertBuilder) Rows() []TransactionWithoutLedger {
+	return i.rows
+}
+
 func (i *transactionBatchInsertBuilder) Exec(ctx context.Context) error {
+	i.rows = nil
 	return i.builder.Exec(ctx)
 }
 

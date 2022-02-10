@@ -36,3 +36,7 @@ func (p *TransactionProcessor) Commit(ctx context.Context) error {
 
 	return nil
 }
+
+func (p *TransactionProcessor) Rows() []history.TransactionWithoutLedger {
+	return p.batch.Rows()
+}
