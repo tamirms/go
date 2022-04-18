@@ -4,23 +4,17 @@ import (
 	"bytes"
 	"context"
 	"flag"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"cloud.google.com/go/storage"
-	"github.com/stellar/go/xdr"
-
 	"github.com/stellar/go/historyarchive"
-	"github.com/stellar/go/xdr"
-
 	"github.com/stellar/go/ingest/ledgerbackend"
 	supportlog "github.com/stellar/go/support/log"
+	"github.com/stellar/go/xdr"
 )
 
 var logger = supportlog.New()
@@ -63,6 +57,10 @@ func main() {
 			NetworkPassphrase: params.NetworkPassphrase,
 		},
 	)
+	if err != nil {
+		logger.WithError(err).Fatal("Could not connect to target backend")
+		return
+	}
 	defer target.Close()
 
 	var latestLedger uint32
@@ -126,52 +124,52 @@ func readLatestLedger(backend historyarchive.ArchiveBackend) (uint32, error) {
 	}
 }
 
-func timeToLedger(gcsBucket *storage.BucketHandle, timestamp time.Time) (uint32, error) {
-	latest, err := readLatestLedger(gcsBucket)
-	if err != nil {
-		return 0, err
-	}
-	if latest < 3 {
-		return 0, fmt.Errorf("not enough ledgers")
-	}
-	upper := int(latest - 2)
-	backend := ledgerbackend.GCSBackend{Bucket: gcsBucket}
-	var lcm xdr.LedgerCloseMeta
-	count := 0
-	result := sort.Search(upper, func(i int) bool {
-		if err != nil {
-			return false
-		}
-		count++
-		ledger := uint32(i + 3)
-		lcm, err = backend.GetLedger(context.Background(), ledger)
-		if err != nil {
-			return false
-		}
-		closeTime := time.Unix(int64(lcm.MustV0().LedgerHeader.Header.ScpValue.CloseTime), 0).UTC()
-		return !closeTime.Before(timestamp)
-	})
-	if err != nil {
-		return 0, err
-	}
-	if result >= upper {
-		return 0, fmt.Errorf("timestamp is after latest sequence")
-	}
-	if result == 0 {
-		lcm, err = backend.GetLedger(context.Background(), 3)
-		if err != nil {
-			return 0, err
-		}
-		count++
-		closeTime := time.Unix(int64(lcm.MustV0().LedgerHeader.Header.ScpValue.CloseTime), 0).UTC()
-		if closeTime.After(timestamp) {
-			return 0, fmt.Errorf("timestamp is before genesis ledger")
-		}
-	}
+// func timeToLedger(target historyarchive.ArchiveBackend, timestamp time.Time) (uint32, error) {
+// 	latest, err := readLatestLedger(target)
+// 	if err != nil {
+// 		return 0, err
+// 	}
+// 	if latest < 3 {
+// 		return 0, fmt.Errorf("not enough ledgers")
+// 	}
+// 	upper := int(latest - 2)
+// 	backend := ledgerbackend.GCSBackend{Bucket: gcsBucket}
+// 	var lcm xdr.LedgerCloseMeta
+// 	count := 0
+// 	result := sort.Search(upper, func(i int) bool {
+// 		if err != nil {
+// 			return false
+// 		}
+// 		count++
+// 		ledger := uint32(i + 3)
+// 		lcm, err = backend.GetLedger(context.Background(), ledger)
+// 		if err != nil {
+// 			return false
+// 		}
+// 		closeTime := time.Unix(int64(lcm.MustV0().LedgerHeader.Header.ScpValue.CloseTime), 0).UTC()
+// 		return !closeTime.Before(timestamp)
+// 	})
+// 	if err != nil {
+// 		return 0, err
+// 	}
+// 	if result >= upper {
+// 		return 0, fmt.Errorf("timestamp is after latest sequence")
+// 	}
+// 	if result == 0 {
+// 		lcm, err = backend.GetLedger(context.Background(), 3)
+// 		if err != nil {
+// 			return 0, err
+// 		}
+// 		count++
+// 		closeTime := time.Unix(int64(lcm.MustV0().LedgerHeader.Header.ScpValue.CloseTime), 0).UTC()
+// 		if closeTime.After(timestamp) {
+// 			return 0, fmt.Errorf("timestamp is before genesis ledger")
+// 		}
+// 	}
 
-	fmt.Printf("number of get leger calls %v\n", count)
-	return uint32(result + 3), err
-}
+// 	fmt.Printf("number of get leger calls %v\n", count)
+// 	return uint32(result + 3), err
+// }
 
 func writeLedger(backend historyarchive.ArchiveBackend, leddger xdr.LedgerCloseMeta) error {
 	blob, err := leddger.MarshalBinary()
