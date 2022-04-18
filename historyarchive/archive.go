@@ -64,6 +64,7 @@ type ArchiveBackend interface {
 	PutFile(path string, in io.ReadCloser) error
 	ListFiles(path string) (chan string, chan error)
 	CanListFiles() bool
+	Close() error
 }
 
 type ArchiveInterface interface {
