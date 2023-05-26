@@ -98,6 +98,56 @@ type Test struct {
 	passPhrase    string
 }
 
+type file struct {
+	name     string
+	contents []byte
+	cur      int
+}
+
+func (f *file) isEmpty() bool {
+	return f.cur >= len(f.contents)
+}
+
+func (f *file) next() byte {
+	val := f.contents[f.cur]
+	f.cur++
+	return val
+}
+
+func findDuplicates(files []*file) [][]string {
+	var result [][]string
+	queue := [][]*file{files}
+	for len(queue) > 0 {
+		group := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+		if len(group) == 0 {
+			continue
+		}
+		if len(group) == 1 {
+			result = append(result, []string{group[0].name})
+			continue
+		}
+
+		nextGroups := map[byte][]*file{}
+		var empty []string
+		for _, f := range group {
+			if f.isEmpty() {
+				empty = append(empty, f.name)
+				continue
+			}
+			nextByte := f.next()
+			nextGroups[nextByte] = append(nextGroups[nextByte], f)
+		}
+		if len(empty) > 0 {
+			result = append(result, empty)
+		}
+		for _, group := range nextGroups {
+			queue = append(queue, group)
+		}
+	}
+	return result
+}
+
 func NewTestForRemoteHorizon(t *testing.T, horizonURL string, passPhrase string, masterKey *keypair.Full) *Test {
 	adminClient, err := sdk.NewAdminClient(0, "", 0)
 	if err != nil {

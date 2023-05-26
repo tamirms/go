@@ -3,6 +3,7 @@ package ingest
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/stellar/go/ingest/ledgerbackend"
 	"github.com/stellar/go/support/errors"
 	logpkg "github.com/stellar/go/support/log"
-	"github.com/stellar/go/toid"
 	"github.com/stellar/go/xdr"
 )
 
@@ -683,32 +683,54 @@ func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger u
 	if s.historyQ.GetTx() == nil {
 		return errors.New("expected transaction to be present")
 	}
-
+	startTime := time.Now()
 	// Clear history data before ingesting - used in `reingest range` command.
-	start, end, err := toid.LedgerRangeInclusive(
-		int32(fromLedger),
-		int32(toLedger),
-	)
-	if err != nil {
-		return errors.Wrap(err, "Invalid range")
-	}
-
-	err = s.historyQ.DeleteRangeAll(s.ctx, start, end)
-	if err != nil {
-		return errors.Wrap(err, "error in DeleteRangeAll")
-	}
+	//start, end, err := toid.LedgerRangeInclusive(
+	//	int32(fromLedger),
+	//	int32(toLedger),
+	//)
+	//if err != nil {
+	//	return errors.Wrap(err, "Invalid range")
+	//}
+	//
+	//err = s.historyQ.DeleteRangeAll(s.ctx, start, end)
+	//if err != nil {
+	//	return errors.Wrap(err, "error in DeleteRangeAll")
+	//}
 
 	for cur := fromLedger; cur <= toLedger; cur++ {
 		var ledgerCloseMeta xdr.LedgerCloseMeta
-		ledgerCloseMeta, err = s.ledgerBackend.GetLedger(s.ctx, cur)
+		filename := fmt.Sprintf("/Users/tamir/work/gopath/src/github.com/stellar/go/txmeta/%d", cur)
+		bin, err := os.ReadFile(filename)
 		if err != nil {
-			return errors.Wrap(err, "error getting ledger")
+			return err
 		}
-
+		if err = ledgerCloseMeta.UnmarshalBinary(bin); err != nil {
+			return err
+		}
+		//
+		//var err error
+		//ledgerCloseMeta, err = s.ledgerBackend.GetLedger(s.ctx, cur)
+		//if err != nil {
+		//	return errors.Wrap(err, "error getting ledger")
+		//}
+		//bin, err := ledgerCloseMeta.MarshalBinary()
+		//if err != nil {
+		//	return err
+		//}
+		//err = os.WriteFile(
+		//	filename,
+		//	bin,
+		//	0666,
+		//)
+		//if err != nil {
+		//	return err
+		//}
 		if err = runTransactionProcessorsOnLedger(s, ledgerCloseMeta); err != nil {
 			return err
 		}
 	}
+	log.WithField("duration", time.Since(startTime)).Info("finished!")
 
 	return nil
 }
@@ -749,9 +771,9 @@ func (h reingestHistoryRangeState) run(s *system) (transition, error) {
 	var startTime time.Time
 
 	if h.force {
-		if t, err := h.prepareRange(s); err != nil {
-			return t, err
-		}
+		//if t, err := h.prepareRange(s); err != nil {
+		//	return t, err
+		//}
 		startTime = time.Now()
 
 		if err := s.historyQ.Begin(); err != nil {
