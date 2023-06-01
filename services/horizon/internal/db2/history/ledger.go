@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/stellar/go/support/db"
 	"sort"
 	"time"
 
@@ -90,15 +91,7 @@ func (q *LedgersQ) Select(ctx context.Context, dest interface{}) error {
 
 // QLedgers defines ingestion ledger related queries.
 type QLedgers interface {
-	InsertLedger(
-		ctx context.Context,
-		ledger xdr.LedgerHeaderHistoryEntry,
-		successTxsCount int,
-		failedTxsCount int,
-		opCount int,
-		txSetOpCount int,
-		ingestVersion int,
-	) (int64, error)
+	NewLedgerBatchInsertBuilder() LedgerBatchInsertBuilder
 }
 
 // InsertLedger creates a row in the history_ledgers table.
@@ -130,6 +123,62 @@ func (q *Q) InsertLedger(ctx context.Context,
 	}
 
 	return result.RowsAffected()
+}
+
+// LedgerBatchInsertBuilder is used to insert ledgers into the
+// history_ledgers table
+type LedgerBatchInsertBuilder interface {
+	Add(
+		ledger xdr.LedgerHeaderHistoryEntry,
+		successTxsCount int,
+		failedTxsCount int,
+		opCount int,
+		txSetOpCount int,
+		ingestVersion int,
+	) error
+	Exec(ctx context.Context, session db.SessionInterface) error
+}
+
+// ledgerBatchInsertBuilder is a simple wrapper around db.BatchInsertBuilder
+type ledgerBatchInsertBuilder struct {
+	builder db.FastBatchInsertBuilder
+	table   string
+}
+
+// NewLedgerBatchInsertBuilder constructs a new EffectBatchInsertBuilder instance
+func (q *Q) NewLedgerBatchInsertBuilder() LedgerBatchInsertBuilder {
+	return &ledgerBatchInsertBuilder{
+		table:   "history_ledgers",
+		builder: db.FastBatchInsertBuilder{},
+	}
+}
+
+// Add adds a effect to the batch
+func (i *ledgerBatchInsertBuilder) Add(
+	ledger xdr.LedgerHeaderHistoryEntry,
+	successTxsCount int,
+	failedTxsCount int,
+	opCount int,
+	txSetOpCount int,
+	ingestVersion int,
+) error {
+	m, err := ledgerHeaderToMap(
+		ledger,
+		successTxsCount,
+		failedTxsCount,
+		opCount,
+		txSetOpCount,
+		ingestVersion,
+	)
+	if err != nil {
+		return err
+	}
+
+	return i.builder.Row(m)
+}
+
+func (i *ledgerBatchInsertBuilder) Exec(ctx context.Context, session db.SessionInterface) error {
+	return i.builder.Exec(ctx, session, i.table)
 }
 
 // GetLedgerGaps obtains ingestion gaps in the history_ledgers table.

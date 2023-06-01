@@ -5,6 +5,7 @@ package test
 
 import (
 	"context"
+	"github.com/stellar/go/support/db"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -25,13 +26,14 @@ type StaticMockServer struct {
 
 // T provides a common set of functionality for each test in horizon
 type T struct {
-	T          *testing.T
-	Assert     *assert.Assertions
-	Require    *require.Assertions
-	Ctx        context.Context
-	HorizonDB  *sqlx.DB
-	CoreDB     *sqlx.DB
-	EndLogTest func() []logrus.Entry
+	T                *testing.T
+	Assert           *assert.Assertions
+	Require          *require.Assertions
+	Ctx              context.Context
+	HorizonDB        *sqlx.DB
+	HorizonDBSession *db.Session
+	CoreDB           *sqlx.DB
+	EndLogTest       func() []logrus.Entry
 }
 
 // Context provides a context suitable for testing in tests that do not create
@@ -49,7 +51,11 @@ func Start(t *testing.T) *T {
 	logger := log.New()
 
 	result.Ctx = log.Set(context.Background(), logger)
-	result.HorizonDB = tdb.Horizon(t)
+	horizonDB := tdb.HorizonPostgres(t)
+	session, err := db.Open(horizonDB.Dialect, horizonDB.DSN)
+	assert.NoError(t, err)
+	result.HorizonDB = session.DB
+	result.HorizonDBSession = session
 	result.CoreDB = tdb.StellarCore(t)
 	result.Assert = assert.New(t)
 	result.Require = require.New(t)

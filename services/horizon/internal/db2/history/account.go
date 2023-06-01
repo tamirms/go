@@ -2,7 +2,9 @@ package history
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"time"
 
 	sq "github.com/Masterminds/squirrel"
 
@@ -27,6 +29,7 @@ func (q *Q) AccountsByAddresses(ctx context.Context, dest interface{}, addresses
 // CreateAccounts creates rows in the history_accounts table for a given list of addresses.
 // CreateAccounts returns a mapping of account address to its corresponding id in the history_accounts table
 func (q *Q) CreateAccounts(ctx context.Context, addresses []string, batchSize int) (map[string]int64, error) {
+	startTime := time.Now()
 	builder := &db.BatchInsertBuilder{
 		Table:        q.GetTable("history_accounts"),
 		MaxBatchSize: batchSize,
@@ -76,6 +79,7 @@ func (q *Q) CreateAccounts(ctx context.Context, addresses []string, batchSize in
 		}
 	}
 
+	fmt.Printf("CreateAccounts(%v) duration %v\n", len(addresses), time.Since(startTime))
 	return addressToID, nil
 }
 

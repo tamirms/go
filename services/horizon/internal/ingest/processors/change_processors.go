@@ -2,6 +2,7 @@ package processors
 
 import (
 	"context"
+	"github.com/stellar/go/xdr"
 	"io"
 
 	"github.com/stellar/go/ingest"
@@ -13,7 +14,7 @@ type ChangeProcessor interface {
 }
 
 type LedgerTransactionProcessor interface {
-	ProcessTransaction(ctx context.Context, transaction ingest.LedgerTransaction) error
+	ProcessTransaction(lcm xdr.LedgerCloseMeta, transaction ingest.LedgerTransaction) error
 }
 
 type LedgerTransactionFilterer interface {
@@ -22,6 +23,7 @@ type LedgerTransactionFilterer interface {
 
 func StreamLedgerTransactions(
 	ctx context.Context,
+	lcm xdr.LedgerCloseMeta,
 	txFilterer LedgerTransactionFilterer,
 	filteredTxProcessor LedgerTransactionProcessor,
 	txProcessor LedgerTransactionProcessor,
@@ -44,7 +46,7 @@ func StreamLedgerTransactions(
 			)
 		}
 		if !include {
-			if err = filteredTxProcessor.ProcessTransaction(ctx, tx); err != nil {
+			if err = filteredTxProcessor.ProcessTransaction(lcm, tx); err != nil {
 				return errors.Wrapf(
 					err,
 					"could not process transaction %v",
@@ -55,7 +57,7 @@ func StreamLedgerTransactions(
 			continue
 		}
 
-		if err = txProcessor.ProcessTransaction(ctx, tx); err != nil {
+		if err = txProcessor.ProcessTransaction(lcm, tx); err != nil {
 			return errors.Wrapf(
 				err,
 				"could not process transaction %v",

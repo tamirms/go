@@ -44,9 +44,7 @@ func (t *T) Finish() {
 // HorizonSession returns a db.Session instance pointing at the horizon test
 // database
 func (t *T) HorizonSession() *db.Session {
-	return &db.Session{
-		DB: t.HorizonDB,
-	}
+	return t.HorizonDBSession
 }
 
 func (t *T) loadScenario(scenarioName string, includeHorizon bool) {

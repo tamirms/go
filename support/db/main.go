@@ -14,6 +14,10 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"net/url"
 	"strconv"
 	"strings"
@@ -113,8 +117,10 @@ type UpdateBuilder struct {
 // cross goroutine boundaries and is not concurrency safe.
 type Session struct {
 	// DB is the database connection that queries should be executed against.
-	DB *sqlx.DB
+	DB      *sqlx.DB
+	PgxPool *pgxpool.Pool
 
+	pgxTx     pgx.Tx
 	tx        *sqlx.Tx
 	txOptions *sql.TxOptions
 }
@@ -125,6 +131,12 @@ type SessionInterface interface {
 	Rollback() error
 	Commit() error
 	GetTx() *sqlx.Tx
+	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
+	BeginPgxTx(context.Context) error
+	RollbackPgxTx(context.Context) error
+	CommitPgxTx(context.Context) error
+	ExecRawPgx(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error)
+	QueryPgx(ctx context.Context, query string, args ...any) (pgx.Rows, error)
 	GetTxOptions() *sql.TxOptions
 	TruncateTables(ctx context.Context, tables []string) error
 	Clone() SessionInterface
@@ -157,16 +169,19 @@ type Table struct {
 	Session *Session
 }
 
-func pingDB(db *sqlx.DB) error {
-	var err error
+func pingDB(session *Session) error {
 	for attempt := 0; attempt < maxDBPingAttempts; attempt++ {
-		if err = db.Ping(); err == nil {
+		dbErr := session.DB.Ping()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+		poolErr := session.PgxPool.Ping(ctx)
+		cancel()
+		if dbErr == nil && poolErr == nil {
 			return nil
 		}
 		time.Sleep(time.Second)
 	}
 
-	return errors.Wrapf(err, "failed to connect to DB after %v attempts", maxDBPingAttempts)
+	return errors.New(fmt.Sprintf("failed to connect to DB after %v attempts", maxDBPingAttempts))
 }
 
 type ClientConfig struct {
@@ -226,11 +241,20 @@ func Open(dialect, dsn string, clientConfigs ...ClientConfig) (*Session, error) 
 	if err != nil {
 		return nil, errors.Wrap(err, "open failed")
 	}
-	if err = pingDB(db); err != nil {
+
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		db.Close()
+		return nil, errors.Wrap(err, "create pool failed")
+	}
+
+	session := &Session{DB: db, PgxPool: pool}
+	if err = pingDB(session); err != nil {
+		session.Close()
 		return nil, errors.Wrap(err, "ping failed")
 	}
 
-	return &Session{DB: db}, nil
+	return session, nil
 }
 
 // Wrap wraps a bare *sql.DB (from the database/sql stdlib package) in a

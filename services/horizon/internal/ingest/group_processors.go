@@ -3,6 +3,8 @@ package ingest
 import (
 	"context"
 	"fmt"
+	"github.com/stellar/go/support/db"
+	"github.com/stellar/go/xdr"
 	"time"
 
 	"github.com/stellar/go/ingest"
@@ -62,10 +64,10 @@ func newGroupTransactionProcessors(processors []horizonTransactionProcessor) *gr
 	}
 }
 
-func (g groupTransactionProcessors) ProcessTransaction(ctx context.Context, tx ingest.LedgerTransaction) error {
+func (g groupTransactionProcessors) ProcessTransaction(lcm xdr.LedgerCloseMeta, transaction ingest.LedgerTransaction) (err error) {
 	for _, p := range g.processors {
 		startTime := time.Now()
-		if err := p.ProcessTransaction(ctx, tx); err != nil {
+		if err := p.ProcessTransaction(lcm, transaction); err != nil {
 			return errors.Wrapf(err, "error in %T.ProcessTransaction", p)
 		}
 		g.AddRunDuration(fmt.Sprintf("%T", p), startTime)
@@ -73,13 +75,13 @@ func (g groupTransactionProcessors) ProcessTransaction(ctx context.Context, tx i
 	return nil
 }
 
-func (g groupTransactionProcessors) Commit(ctx context.Context) error {
+func (g groupTransactionProcessors) Commit(ctx context.Context, session db.SessionInterface) error {
 	for _, p := range g.processors {
 		startTime := time.Now()
-		if err := p.Commit(ctx); err != nil {
+		if err := p.Commit(ctx, session); err != nil {
 			return errors.Wrapf(err, "error in %T.Commit", p)
 		}
-		g.AddRunDuration(fmt.Sprintf("%T", p), startTime)
+		g.AddRunDuration(fmt.Sprintf("%T_commit", p), startTime)
 	}
 	return nil
 }

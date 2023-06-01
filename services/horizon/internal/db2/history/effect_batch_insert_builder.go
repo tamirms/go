@@ -11,52 +11,49 @@ import (
 // history_effects table
 type EffectBatchInsertBuilder interface {
 	Add(
-		ctx context.Context,
-		accountID int64,
+		account FutureID,
 		muxedAccount null.String,
 		operationID int64,
 		order uint32,
 		effectType EffectType,
 		details []byte,
 	) error
-	Exec(ctx context.Context) error
+	Exec(ctx context.Context, session db.SessionInterface) error
 }
 
 // effectBatchInsertBuilder is a simple wrapper around db.BatchInsertBuilder
 type effectBatchInsertBuilder struct {
-	builder db.BatchInsertBuilder
+	table   string
+	builder db.FastBatchInsertBuilder
 }
 
 // NewEffectBatchInsertBuilder constructs a new EffectBatchInsertBuilder instance
-func (q *Q) NewEffectBatchInsertBuilder(maxBatchSize int) EffectBatchInsertBuilder {
+func (q *Q) NewEffectBatchInsertBuilder() EffectBatchInsertBuilder {
 	return &effectBatchInsertBuilder{
-		builder: db.BatchInsertBuilder{
-			Table:        q.GetTable("history_effects"),
-			MaxBatchSize: maxBatchSize,
-		},
+		table:   "history_effects",
+		builder: db.FastBatchInsertBuilder{},
 	}
 }
 
 // Add adds a effect to the batch
 func (i *effectBatchInsertBuilder) Add(
-	ctx context.Context,
-	accountID int64,
+	account FutureID,
 	muxedAccount null.String,
 	operationID int64,
 	order uint32,
 	effectType EffectType,
 	details []byte,
 ) error {
-	return i.builder.Row(ctx, map[string]interface{}{
-		"history_account_id":   accountID,
+	return i.builder.Row(map[string]interface{}{
+		"history_account_id":   account,
 		"address_muxed":        muxedAccount,
 		"history_operation_id": operationID,
-		"\"order\"":            order,
+		"order":                order,
 		"type":                 effectType,
 		"details":              details,
 	})
 }
 
-func (i *effectBatchInsertBuilder) Exec(ctx context.Context) error {
-	return i.builder.Exec(ctx)
+func (i *effectBatchInsertBuilder) Exec(ctx context.Context, session db.SessionInterface) error {
+	return i.builder.Exec(ctx, session, i.table)
 }

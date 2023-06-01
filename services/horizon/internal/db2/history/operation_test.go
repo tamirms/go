@@ -78,7 +78,7 @@ func TestOperationByLiquidityPool(t *testing.T) {
 	opID2 := toid.New(sequence, txIndex, 2).ToInt64()
 
 	// Insert a phony transaction
-	transactionBuilder := q.NewTransactionBatchInsertBuilder(2)
+	transactionBuilder := q.NewTransactionBatchInsertBuilder()
 	firstTransaction := buildLedgerTransaction(tt.T, testTransaction{
 		index:         uint32(txIndex),
 		envelopeXDR:   "AAAAACiSTRmpH6bHC6Ekna5e82oiGY5vKDEEUgkq9CB//t+rAAAAyAEXUhsAADDRAAAAAAAAAAAAAAABAAAAAAAAAAsBF1IbAABX4QAAAAAAAAAA",
@@ -87,15 +87,14 @@ func TestOperationByLiquidityPool(t *testing.T) {
 		metaXDR:       "AAAAAQAAAAAAAAAA",
 		hash:          "19aaa18db88605aedec04659fb45e06f240b022eb2d429e05133e4d53cd945ba",
 	})
-	err := transactionBuilder.Add(tt.Ctx, firstTransaction, uint32(sequence))
+	err := transactionBuilder.Add(firstTransaction, uint32(sequence))
 	tt.Assert.NoError(err)
-	err = transactionBuilder.Exec(tt.Ctx)
+	err = transactionBuilder.Exec(tt.Ctx, q)
 	tt.Assert.NoError(err)
 
 	// Insert a two phony operations
-	operationBuilder := q.NewOperationBatchInsertBuilder(2)
+	operationBuilder := q.NewOperationBatchInsertBuilder()
 	err = operationBuilder.Add(
-		tt.Ctx,
 		opID1,
 		txID,
 		1,
@@ -105,11 +104,10 @@ func TestOperationByLiquidityPool(t *testing.T) {
 		null.String{},
 	)
 	tt.Assert.NoError(err)
-	err = operationBuilder.Exec(tt.Ctx)
+	err = operationBuilder.Exec(tt.Ctx, q)
 	tt.Assert.NoError(err)
 
 	err = operationBuilder.Add(
-		tt.Ctx,
 		opID2,
 		txID,
 		1,
@@ -119,7 +117,7 @@ func TestOperationByLiquidityPool(t *testing.T) {
 		null.String{},
 	)
 	tt.Assert.NoError(err)
-	err = operationBuilder.Exec(tt.Ctx)
+	err = operationBuilder.Exec(tt.Ctx, q)
 	tt.Assert.NoError(err)
 
 	// Insert Liquidity Pool history

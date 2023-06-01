@@ -240,6 +240,7 @@ type AccountEntry struct {
 }
 
 type IngestionQ interface {
+	db.SessionInterface
 	QAccounts
 	QFilter
 	QAssetStats
@@ -255,11 +256,11 @@ type IngestionQ interface {
 	// QParticipants
 	// Copy the small interfaces with shared methods directly, otherwise error:
 	// duplicate method CreateAccounts
-	NewTransactionParticipantsBatchInsertBuilder(maxBatchSize int) TransactionParticipantsBatchInsertBuilder
-	NewOperationParticipantBatchInsertBuilder(maxBatchSize int) OperationParticipantBatchInsertBuilder
+	NewTransactionParticipantsBatchInsertBuilder() TransactionParticipantsBatchInsertBuilder
+	NewOperationParticipantBatchInsertBuilder() OperationParticipantBatchInsertBuilder
 	QSigners
 	//QTrades
-	NewTradeBatchInsertBuilder(maxBatchSize int) TradeBatchInsertBuilder
+	NewTradeBatchInsertBuilder() TradeBatchInsertBuilder
 	RebuildTradeAggregationTimes(ctx context.Context, from, to strtime.Millis, roundingSlippageFilter int) error
 	RebuildTradeAggregationBuckets(ctx context.Context, fromLedger, toLedger uint32, roundingSlippageFilter int) error
 	ReapLookupTables(ctx context.Context, offsets map[string]int64) (map[string]int64, map[string]int64, error)
@@ -729,8 +730,8 @@ type TransactionFilteredTmp struct {
 }
 
 func (t *Transaction) HasPreconditions() bool {
-	return !t.TimeBounds.Null ||
-		!t.LedgerBounds.Null ||
+	return t.TimeBounds.Valid ||
+		t.LedgerBounds.Valid ||
 		t.MinAccountSequence.Valid ||
 		(t.MinAccountSequenceAge.Valid &&
 			t.MinAccountSequenceAge.String != "0") ||
@@ -1103,6 +1104,56 @@ func (q *Q) upsertRows(ctx context.Context, table string, conflictField string, 
 		` + strings.Join(onConflictPart, ",")
 
 	_, err := q.ExecRaw(
+		context.WithValue(ctx, &db.QueryTypeContextKey, db.UpsertQueryType),
+		sql,
+		pqArrays...,
+	)
+	return err
+}
+
+func bulkInsert(ctx context.Context, session db.SessionInterface, table string, conflictFields []string, fields []upsertField, onConflictUpdate []string) error {
+	unnestPart := make([]string, 0, len(fields))
+	insertFieldsPart := make([]string, 0, len(fields))
+	onConflictPart := make([]string, 0, len(fields))
+	pqArrays := make([]interface{}, 0, len(fields))
+
+	for _, field := range fields {
+		unnestPart = append(
+			unnestPart,
+			fmt.Sprintf("unnest(?::%s[]) /* %s */", field.dbType, field.name),
+		)
+		insertFieldsPart = append(
+			insertFieldsPart,
+			field.name,
+		)
+		pqArrays = append(
+			pqArrays,
+			pq.Array(field.objects),
+		)
+	}
+
+	for _, colName := range onConflictUpdate {
+		onConflictPart = append(
+			onConflictPart,
+			fmt.Sprintf("%s = excluded.%s", colName, colName),
+		)
+	}
+
+	sql := `
+	WITH r AS
+		(SELECT ` + strings.Join(unnestPart, ",") + `)
+	INSERT INTO ` + table + `
+		(` + strings.Join(insertFieldsPart, ",") + `)
+	SELECT * from r
+	ON CONFLICT (` + strings.Join(conflictFields, ",") + `) `
+
+	if len(onConflictPart) == 0 {
+		sql = sql + "DO NOTHING"
+	} else {
+		sql = sql + "DO UPDATE SET`" + strings.Join(onConflictPart, ",")
+	}
+
+	_, err := session.ExecRawPgx(
 		context.WithValue(ctx, &db.QueryTypeContextKey, db.UpsertQueryType),
 		sql,
 		pqArrays...,

@@ -3,6 +3,7 @@ package history
 import (
 	"database/sql/driver"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgtype"
 	"strings"
 
 	"github.com/guregu/null"
@@ -72,16 +73,22 @@ func (t LedgerBounds) Value() (driver.Value, error) {
 	return fmt.Sprintf("[%d, %d)", t.MinLedger.Int64, t.MaxLedger.Int64), nil
 }
 
-func formatLedgerBounds(ledgerBounds *xdr.LedgerBounds) LedgerBounds {
+func formatLedgerBounds(ledgerBounds *xdr.LedgerBounds) pgtype.Range[pgtype.Int8] {
 	if ledgerBounds == nil {
-		return LedgerBounds{Null: true}
+		return pgtype.Range[pgtype.Int8]{Valid: false}
 	}
 
-	return LedgerBounds{
-		MinLedger: null.IntFrom(int64(ledgerBounds.MinLedger)),
-		// elide max_ledger if it's 0 since that means no upper bound
-		MaxLedger: null.NewInt(
-			int64(ledgerBounds.MaxLedger),
-			ledgerBounds.MaxLedger > 0),
+	return pgtype.Range[pgtype.Int8]{
+		Lower: pgtype.Int8{
+			Int64: int64(ledgerBounds.MinLedger),
+			Valid: true,
+		},
+		Upper: pgtype.Int8{
+			Int64: int64(ledgerBounds.MaxLedger),
+			Valid: ledgerBounds.MaxLedger > 0,
+		},
+		LowerType: pgtype.Inclusive,
+		UpperType: pgtype.Unbounded,
+		Valid:     true,
 	}
 }

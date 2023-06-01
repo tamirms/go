@@ -21,7 +21,7 @@ var (
 	horizonDBConn *sqlx.DB
 )
 
-func horizonPostgres(t *testing.T) *db.DB {
+func HorizonPostgres(t *testing.T) *db.DB {
 	if horizonDB != nil {
 		return horizonDB
 	}
@@ -35,15 +35,6 @@ func corePostgres(t *testing.T) *db.DB {
 	}
 	coreDB = db.Postgres(t)
 	return coreDB
-}
-
-func Horizon(t *testing.T) *sqlx.DB {
-	if horizonDBConn != nil {
-		return horizonDBConn
-	}
-
-	horizonDBConn = horizonPostgres(t).Open()
-	return horizonDBConn
 }
 
 func HorizonURL() string {

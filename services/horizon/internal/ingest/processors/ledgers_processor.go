@@ -2,72 +2,71 @@ package processors
 
 import (
 	"context"
+	"github.com/stellar/go/services/horizon/internal/db2/history"
+	"github.com/stellar/go/support/db"
 
 	"github.com/stellar/go/ingest"
-	"github.com/stellar/go/services/horizon/internal/db2/history"
-	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/xdr"
 )
 
-type LedgersProcessor struct {
-	ledgersQ       history.QLedgers
-	ledger         xdr.LedgerHeaderHistoryEntry
-	ingestVersion  int
+type ledgerInfo struct {
+	header         xdr.LedgerHeaderHistoryEntry
 	successTxCount int
 	failedTxCount  int
 	opCount        int
 	txSetOpCount   int
 }
+type LedgersProcessor struct {
+	batch         history.LedgerBatchInsertBuilder
+	ledgers       map[uint32]*ledgerInfo
+	ingestVersion int
+}
 
-func NewLedgerProcessor(
-	ledgerQ history.QLedgers,
-	ledger xdr.LedgerHeaderHistoryEntry,
-	ingestVersion int,
-) *LedgersProcessor {
+func NewLedgerProcessor(batch history.LedgerBatchInsertBuilder, ingestVersion int) *LedgersProcessor {
 	return &LedgersProcessor{
-		ledger:        ledger,
-		ledgersQ:      ledgerQ,
+		batch:         batch,
+		ledgers:       map[uint32]*ledgerInfo{},
 		ingestVersion: ingestVersion,
 	}
 }
 
-func (p *LedgersProcessor) ProcessTransaction(ctx context.Context, transaction ingest.LedgerTransaction) (err error) {
+func (p *LedgersProcessor) ProcessTransaction(lcm xdr.LedgerCloseMeta, transaction ingest.LedgerTransaction) (err error) {
+	sequence := lcm.LedgerSequence()
+	entry, ok := p.ledgers[sequence]
+	if !ok {
+		entry = &ledgerInfo{header: lcm.V0.LedgerHeader}
+		p.ledgers[sequence] = entry
+	}
 	opCount := len(transaction.Envelope.Operations())
-	p.txSetOpCount += opCount
+	entry.txSetOpCount += opCount
 	if transaction.Result.Successful() {
-		p.successTxCount++
-		p.opCount += opCount
+		entry.successTxCount++
+		entry.opCount += opCount
 	} else {
-		p.failedTxCount++
+		entry.failedTxCount++
 	}
 
 	return nil
 }
 
-func (p *LedgersProcessor) Commit(ctx context.Context) error {
-	rowsAffected, err := p.ledgersQ.InsertLedger(ctx,
-		p.ledger,
-		p.successTxCount,
-		p.failedTxCount,
-		p.opCount,
-		p.txSetOpCount,
-		p.ingestVersion,
-	)
-
-	if err != nil {
-		return errors.Wrap(err, "Could not insert ledger")
+func (p *LedgersProcessor) Commit(ctx context.Context, session db.SessionInterface) error {
+	for seq, entry := range p.ledgers {
+		err := p.batch.Add(
+			entry.header,
+			entry.successTxCount,
+			entry.failedTxCount,
+			entry.opCount,
+			entry.txSetOpCount,
+			p.ingestVersion,
+		)
+		if err != nil {
+			return err
+		}
+		delete(p.ledgers, seq)
 	}
 
-	sequence := uint32(p.ledger.Header.LedgerSeq)
-
-	if rowsAffected != 1 {
-		log.WithField("rowsAffected", rowsAffected).
-			WithField("sequence", sequence).
-			Error("Invalid number of rows affected when ingesting new ledger")
-		return errors.Errorf(
-			"0 rows affected when ingesting new ledger: %v",
-			sequence,
-		)
+	if err := p.batch.Exec(ctx, session); err != nil {
+		return err
 	}
 
 	return nil

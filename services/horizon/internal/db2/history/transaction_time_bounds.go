@@ -3,6 +3,7 @@ package history
 import (
 	"database/sql/driver"
 	"fmt"
+	"github.com/jackc/pgx/v5/pgtype"
 	"math"
 	"strings"
 
@@ -73,24 +74,31 @@ func (t TimeBounds) Value() (driver.Value, error) {
 	return fmt.Sprintf("[%d, %d)", t.Lower.Int64, t.Upper.Int64), nil
 }
 
-func formatTimeBounds(timeBounds *xdr.TimeBounds) TimeBounds {
+func formatTimeBounds(timeBounds *xdr.TimeBounds) pgtype.Range[pgtype.Int8] {
 	if timeBounds == nil {
-		return TimeBounds{Null: true}
-	}
-
-	if timeBounds.MaxTime == 0 {
-		return TimeBounds{
-			Lower: null.IntFrom(int64(timeBounds.MinTime)),
+		return pgtype.Range[pgtype.Int8]{
+			Valid: false,
 		}
 	}
 
-	maxTime := timeBounds.MaxTime
+	if timeBounds.MaxTime == 0 {
+		return pgtype.Range[pgtype.Int8]{
+			Lower:     pgtype.Int8{Int64: int64(timeBounds.MinTime), Valid: true},
+			LowerType: pgtype.Inclusive,
+			UpperType: pgtype.Unbounded,
+			Valid:     true,
+		}
+	}
+
+	maxTime := int64(timeBounds.MaxTime)
 	if maxTime > math.MaxInt64 {
 		maxTime = math.MaxInt64
 	}
-
-	return TimeBounds{
-		Lower: null.IntFrom(int64(timeBounds.MinTime)),
-		Upper: null.IntFrom(int64(maxTime)),
+	return pgtype.Range[pgtype.Int8]{
+		Lower:     pgtype.Int8{Int64: int64(timeBounds.MinTime), Valid: true},
+		Upper:     pgtype.Int8{Int64: maxTime, Valid: true},
+		LowerType: pgtype.Inclusive,
+		UpperType: pgtype.Exclusive,
+		Valid:     true,
 	}
 }

@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"database/sql"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -30,6 +32,40 @@ func (m *MockSession) BeginTx(opts *sql.TxOptions) error {
 func (m *MockSession) Rollback() error {
 	args := m.Called()
 	return args.Error(0)
+}
+
+func (m *MockSession) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+	args := m.Called(ctx, tableName, columnNames, rowSrc)
+	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *MockSession) BeginPgxTx(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+// CommitPgxTx commits the current transaction
+func (m *MockSession) CommitPgxTx(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+// RollbackPgxTx rolls back the current transaction
+func (m *MockSession) RollbackPgxTx(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
+// ExecRawPgx rolls back the current transaction
+func (m *MockSession) ExecRawPgx(ctx context.Context, query string, vals ...any) (pgconn.CommandTag, error) {
+	args := m.Called(ctx, query, vals)
+	return args.Get(0).(pgconn.CommandTag), args.Error(1)
+}
+
+// QueryPgx rolls back the current transaction
+func (m *MockSession) QueryPgx(ctx context.Context, query string, vals ...any) (pgx.Rows, error) {
+	args := m.Called(ctx, query, vals)
+	return args.Get(0).(pgx.Rows), args.Error(1)
 }
 
 func (m *MockSession) Commit() error {

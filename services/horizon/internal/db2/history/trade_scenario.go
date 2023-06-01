@@ -199,7 +199,7 @@ func FilterTradesByType(trades []Trade, tradeType string) []Trade {
 
 // TradeScenario inserts trade rows into the Horizon DB
 func TradeScenario(tt *test.T, q *Q) TradeFixtures {
-	builder := q.NewTradeBatchInsertBuilder(0)
+	builder := q.NewTradeBatchInsertBuilder()
 
 	addresses := []string{
 		"GB2QIYT2IAUFMRXKLSLLPRECC6OCOGJMADSPTRK7TGNT2SFR2YGWDARD",
@@ -230,9 +230,9 @@ func TradeScenario(tt *test.T, q *Q) TradeFixtures {
 	inserts := createInsertTrades(accountIDs, assetIDs, poolIDs, 3)
 
 	tt.Assert.NoError(
-		builder.Add(tt.Ctx, inserts...),
+		builder.Add(inserts...),
 	)
-	tt.Assert.NoError(builder.Exec(tt.Ctx))
+	tt.Assert.NoError(builder.Exec(tt.Ctx, q))
 
 	idToAccount := buildIDtoAccountMapping(addresses, accountIDs)
 	idToAsset := buildIDtoAssetMapping(assets, assetIDs)

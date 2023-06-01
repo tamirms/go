@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"reflect"
 	"strings"
 	"time"
@@ -65,12 +67,130 @@ func (s *Session) GetTxOptions() *sql.TxOptions {
 	return s.txOptions
 }
 
+type PgxConn interface {
+	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+func (s *Session) pgxConn() PgxConn {
+	if s.pgxTx != nil {
+		return s.pgxTx
+	}
+	return s.PgxPool
+}
+
+func (s *Session) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+	return s.pgxConn().CopyFrom(ctx, tableName, columnNames, rowSrc)
+}
+
+func (s *Session) BeginPgxTx(ctx context.Context) error {
+	if s.pgxTx != nil {
+		return errors.New("already in transaction")
+	}
+
+	tx, err := s.PgxPool.Begin(ctx)
+	if err != nil {
+		if knownErr := s.replaceWithKnownError(err, context.Background()); knownErr != nil {
+			return knownErr
+		}
+
+		return errors.Wrap(err, "beginTx failed")
+	}
+	log.Debug("sql: begin")
+
+	s.pgxTx = tx
+	return nil
+}
+
+// CommitPgxTx commits the current transaction
+func (s *Session) CommitPgxTx(ctx context.Context) error {
+	if s.pgxTx == nil {
+		return errors.New("not in transaction")
+	}
+
+	err := s.pgxTx.Commit(ctx)
+	log.Debug("sql: commit")
+	s.pgxTx = nil
+
+	if knownErr := s.replaceWithKnownError(err, context.Background()); knownErr != nil {
+		return knownErr
+	}
+	return err
+}
+
+// RollbackPgxTx rolls back the current transaction
+func (s *Session) RollbackPgxTx(ctx context.Context) error {
+	if s.pgxTx == nil {
+		return errors.New("not in transaction")
+	}
+
+	err := s.pgxTx.Rollback(ctx)
+	log.Debug("sql: rollback")
+	s.pgxTx = nil
+
+	if knownErr := s.replaceWithKnownError(err, context.Background()); knownErr != nil {
+		return knownErr
+	}
+	return err
+}
+
+func (s *Session) ExecRawPgx(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error) {
+	query, err := s.ReplacePlaceholders(query)
+	if err != nil {
+		return pgconn.CommandTag{}, errors.Wrap(err, "replace placeholders failed")
+	}
+
+	start := time.Now()
+	result, err := s.pgxConn().Exec(ctx, query, args...)
+	s.log(ctx, "exec-pgx", start, query, args)
+	if err == nil {
+		return result, nil
+	}
+
+	if knownErr := s.replaceWithKnownError(err, ctx); knownErr != nil {
+		return pgconn.CommandTag{}, knownErr
+	}
+
+	if s.NoRows(err) {
+		return pgconn.CommandTag{}, err
+	}
+
+	return pgconn.CommandTag{}, errors.Wrap(err, "exec failed")
+}
+
+func (s *Session) QueryPgx(ctx context.Context, query string, args ...any) (pgx.Rows, error) {
+	query, err := s.ReplacePlaceholders(query)
+	if err != nil {
+		return nil, errors.Wrap(err, "replace placeholders failed")
+	}
+
+	start := time.Now()
+	result, err := s.pgxConn().Query(ctx, query, args...)
+	s.log(ctx, "query-pgx", start, query, args)
+
+	if err == nil {
+		return result, nil
+	}
+
+	if knownErr := s.replaceWithKnownError(err, ctx); knownErr != nil {
+		return nil, knownErr
+	}
+
+	if s.NoRows(err) {
+		return nil, err
+	}
+
+	return nil, errors.Wrap(err, "query failed")
+}
+
 // Clone clones the receiver, returning a new instance backed by the same
 // context and db. The result will not be bound to any transaction that the
 // source is currently within.
 func (s *Session) Clone() SessionInterface {
 	return &Session{
-		DB: s.DB,
+		DB:      s.DB,
+		PgxPool: s.PgxPool,
 	}
 }
 
@@ -78,6 +198,7 @@ func (s *Session) Clone() SessionInterface {
 // and releasing any resources. It is rare to Close a DB, as the DB handle is meant
 // to be long-lived and shared between many goroutines.
 func (s *Session) Close() error {
+	s.PgxPool.Close()
 	return s.DB.Close()
 }
 

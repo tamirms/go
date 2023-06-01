@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/jackc/pgx/v5/pgtype"
 	"testing"
 	"time"
 
@@ -247,29 +248,28 @@ func FeeBumpScenario(tt *test.T, q *Q, successful bool) FeeBumpFixture {
 		hash:          "edba3051b2f2d9b713e8a08709d631eccb72c59864ff3c564c68792271bb24a7",
 	})
 	ctx := context.Background()
-	insertBuilder := q.NewTransactionBatchInsertBuilder(2)
-	prefilterInsertBuilder := q.NewTransactionFilteredTmpBatchInsertBuilder(2)
+	insertBuilder := q.NewTransactionBatchInsertBuilder()
+	prefilterInsertBuilder := q.NewTransactionFilteredTmpBatchInsertBuilder()
 	// include both fee bump and normal transaction in the same batch
 	// to make sure both kinds of transactions can be inserted using a single exec statement
-	tt.Assert.NoError(insertBuilder.Add(ctx, feeBumpTransaction, sequence))
-	tt.Assert.NoError(insertBuilder.Add(ctx, normalTransaction, sequence))
-	tt.Assert.NoError(insertBuilder.Exec(ctx))
+	tt.Assert.NoError(insertBuilder.Add(feeBumpTransaction, sequence))
+	tt.Assert.NoError(insertBuilder.Add(normalTransaction, sequence))
+	tt.Assert.NoError(insertBuilder.Exec(ctx, q))
 
-	tt.Assert.NoError(prefilterInsertBuilder.Add(ctx, feeBumpTransaction, sequence))
-	tt.Assert.NoError(prefilterInsertBuilder.Add(ctx, normalTransaction, sequence))
-	tt.Assert.NoError(prefilterInsertBuilder.Exec(ctx))
+	tt.Assert.NoError(prefilterInsertBuilder.Add(feeBumpTransaction, sequence))
+	tt.Assert.NoError(prefilterInsertBuilder.Add(normalTransaction, sequence))
+	tt.Assert.NoError(prefilterInsertBuilder.Exec(ctx, q))
 
 	account := fixture.Envelope.SourceAccount().ToAccountId()
 	feeBumpAccount := fixture.Envelope.FeeBumpAccount().ToAccountId()
 
-	opBuilder := q.NewOperationBatchInsertBuilder(1)
+	opBuilder := q.NewOperationBatchInsertBuilder()
 	details, err := json.Marshal(map[string]string{
 		"bump_to": "98",
 	})
 	tt.Assert.NoError(err)
 
 	tt.Assert.NoError(opBuilder.Add(
-		ctx,
 		toid.New(fixture.Ledger.Sequence, 1, 1).ToInt64(),
 		toid.New(fixture.Ledger.Sequence, 1, 0).ToInt64(),
 		1,
@@ -278,46 +278,57 @@ func FeeBumpScenario(tt *test.T, q *Q, successful bool) FeeBumpFixture {
 		account.Address(),
 		null.String{},
 	))
-	tt.Assert.NoError(opBuilder.Exec(ctx))
+	tt.Assert.NoError(opBuilder.Exec(ctx, q))
 
-	effectBuilder := q.NewEffectBatchInsertBuilder(2)
+	effectBuilder := q.NewEffectBatchInsertBuilder()
 	details, err = json.Marshal(map[string]interface{}{"new_seq": 98})
 	tt.Assert.NoError(err)
 
-	accounIDs, err := q.CreateAccounts(ctx, []string{account.Address()}, 1)
+	//accounIDs, err := q.CreateAccounts(ctx, []string{account.Address()}, 1)
+	//tt.Assert.NoError(err)
+	//
+	//err = effectBuilder.Add(
+	//	accounIDs[account.Address()],
+	//	null.String{},
+	//	toid.New(fixture.Ledger.Sequence, 1, 1).ToInt64(),
+	//	1,
+	//	EffectSequenceBumped,
+	//	details,
+	//)
 	tt.Assert.NoError(err)
-
-	err = effectBuilder.Add(
-		ctx,
-		accounIDs[account.Address()],
-		null.String{},
-		toid.New(fixture.Ledger.Sequence, 1, 1).ToInt64(),
-		1,
-		EffectSequenceBumped,
-		details,
-	)
-	tt.Assert.NoError(err)
-	tt.Assert.NoError(effectBuilder.Exec(ctx))
+	tt.Assert.NoError(effectBuilder.Exec(ctx, q))
 
 	fixture.Transaction = Transaction{
 		TransactionWithoutLedger: TransactionWithoutLedger{
-			TotalOrderID:         TotalOrderID{528280981504},
-			TransactionHash:      fixture.OuterHash,
-			LedgerSequence:       fixture.Ledger.Sequence,
-			ApplicationOrder:     1,
-			Account:              account.Address(),
-			AccountSequence:      97,
-			MaxFee:               int64(fixture.Envelope.Fee()),
-			FeeCharged:           int64(resultPair.Result.FeeCharged),
-			OperationCount:       1,
-			TxEnvelope:           envelopeXDR,
-			TxResult:             resultXDR,
-			TxFeeMeta:            "AAAAAA==",
-			TxMeta:               "AAAAAQAAAAAAAAAA",
-			MemoType:             "none",
-			Memo:                 null.NewString("", false),
-			TimeBounds:           TimeBounds{Lower: null.IntFrom(2), Upper: null.IntFrom(4)},
-			LedgerBounds:         LedgerBounds{Null: true},
+			TotalOrderID:     TotalOrderID{528280981504},
+			TransactionHash:  fixture.OuterHash,
+			LedgerSequence:   fixture.Ledger.Sequence,
+			ApplicationOrder: 1,
+			Account:          account.Address(),
+			AccountSequence:  97,
+			MaxFee:           int64(fixture.Envelope.Fee()),
+			FeeCharged:       int64(resultPair.Result.FeeCharged),
+			OperationCount:   1,
+			TxEnvelope:       envelopeXDR,
+			TxResult:         resultXDR,
+			TxFeeMeta:        "AAAAAA==",
+			TxMeta:           "AAAAAQAAAAAAAAAA",
+			MemoType:         "none",
+			Memo:             null.NewString("", false),
+			TimeBounds: pgtype.Range[pgtype.Int8]{
+				Lower: pgtype.Int8{
+					Int64: 2,
+					Valid: true,
+				},
+				Upper: pgtype.Int8{
+					Int64: 4,
+					Valid: true,
+				},
+				LowerType: pgtype.Inclusive,
+				UpperType: pgtype.Exclusive,
+				Valid:     true,
+			},
+			LedgerBounds:         pgtype.Range[pgtype.Int8]{Valid: false},
 			ExtraSigners:         nil,
 			Signatures:           signatures(fixture.Envelope.FeeBumpSignatures()),
 			InnerSignatures:      signatures(fixture.Envelope.Signatures()),

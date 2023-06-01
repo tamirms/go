@@ -191,3 +191,41 @@ func TestBatchInsertBuilder(t *testing.T) {
 		},
 	)
 }
+
+func TestFastBatchInsertBuilder(t *testing.T) {
+	const schema = `
+CREATE TABLE  IF NOT EXISTS people (
+    name character varying NOT NULL,
+    hunger_levels integer[] NOT NULL,
+    PRIMARY KEY (name)
+);
+`
+	db := dbtest.Postgres(t).Load(schema)
+	defer db.Close()
+	sess, err := Open("postgres", db.DSN)
+	defer sess.Close()
+
+	assert.NoError(t, sess.BeginPgxTx(context.Background()))
+	defer sess.RollbackPgxTx(context.Background())
+
+	insertBuilder := &FastBatchInsertBuilder{}
+
+	// exec on the empty set should produce no errors
+	assert.NoError(t, insertBuilder.Exec(context.Background(), sess, "people"))
+
+	err = insertBuilder.Row(map[string]interface{}{
+		"name":          "bubba",
+		"hunger_levels": []int{1, 2, 3},
+	})
+	assert.NoError(t, err)
+
+	err = insertBuilder.Row(map[string]interface{}{
+		"name":          "jonx",
+		"hunger_levels": []int{4},
+	})
+	assert.NoError(t, err)
+
+	assert.NoError(t, insertBuilder.Exec(context.Background(), sess, "people"))
+
+	assert.NoError(t, sess.CommitPgxTx(context.Background()))
+}

@@ -465,7 +465,7 @@ func TestEffectsCoversAllOperationTypes(t *testing.T) {
 				}
 				assert.True(t, err2 != nil || err == nil, s)
 			}()
-			_, err = operation.effects()
+			_, err = operation.addEffects()
 		}()
 	}
 
@@ -487,7 +487,7 @@ func TestEffectsCoversAllOperationTypes(t *testing.T) {
 		ledgerSequence: 1,
 	}
 	// calling effects should error due to the unknown operation
-	_, err := operation.effects()
+	_, err := operation.addEffects()
 	assert.Contains(t, err.Error(), "Unknown operation type")
 }
 
@@ -1569,7 +1569,7 @@ func TestOperationEffects(t *testing.T) {
 				ledgerSequence: tc.sequence,
 			}
 
-			effects, err := operation.effects()
+			effects, err := operation.addEffects()
 			tt.NoError(err)
 			tt.Equal(tc.expected, effects)
 		})
@@ -1659,7 +1659,7 @@ func TestOperationEffectsSetOptionsSignersOrder(t *testing.T) {
 		ledgerSequence: 46,
 	}
 
-	effects, err := operation.effects()
+	effects, err := operation.addEffects()
 	tt.NoError(err)
 	expected := []effect{
 		{
@@ -1790,7 +1790,7 @@ func TestOperationEffectsSetOptionsSignersNoUpdated(t *testing.T) {
 		ledgerSequence: 46,
 	}
 
-	effects, err := operation.effects()
+	effects, err := operation.addEffects()
 	tt.NoError(err)
 	expected := []effect{
 		{
@@ -1856,7 +1856,7 @@ func TestOperationRegressionAccountTrustItself(t *testing.T) {
 		ledgerSequence: 46,
 	}
 
-	effects, err := operation.effects()
+	effects, err := operation.addEffects()
 	tt.NoError(err)
 	tt.Equal([]effect{}, effects)
 }
@@ -1892,7 +1892,7 @@ func TestOperationEffectsAllowTrustAuthorizedToMaintainLiabilities(t *testing.T)
 		ledgerSequence: 1,
 	}
 
-	effects, err := operation.effects()
+	effects, err := operation.addEffects()
 	tt.NoError(err)
 
 	expected := []effect{
@@ -1953,7 +1953,7 @@ func TestOperationEffectsClawback(t *testing.T) {
 		ledgerSequence: 1,
 	}
 
-	effects, err := operation.effects()
+	effects, err := operation.addEffects()
 	tt.NoError(err)
 
 	expected := []effect{
@@ -2013,7 +2013,7 @@ func TestOperationEffectsClawbackClaimableBalance(t *testing.T) {
 		ledgerSequence: 1,
 	}
 
-	effects, err := operation.effects()
+	effects, err := operation.addEffects()
 	tt.NoError(err)
 
 	expected := []effect{
@@ -2062,7 +2062,7 @@ func TestOperationEffectsSetTrustLineFlags(t *testing.T) {
 		ledgerSequence: 1,
 	}
 
-	effects, err := operation.effects()
+	effects, err := operation.addEffects()
 	tt.NoError(err)
 
 	expected := []effect{
@@ -2331,7 +2331,7 @@ func (s *CreateClaimableBalanceEffectsTestSuite) TestEffects() {
 				ledgerSequence: 1,
 			}
 
-			effects, err := operation.effects()
+			effects, err := operation.addEffects()
 			s.Assert().NoError(err)
 			s.Assert().Equal(tc.expected, effects)
 		})
@@ -2591,7 +2591,7 @@ func (s *ClaimClaimableBalanceEffectsTestSuite) TestEffects() {
 				ledgerSequence: 1,
 			}
 
-			effects, err := operation.effects()
+			effects, err := operation.addEffects()
 			s.Assert().NoError(err)
 			s.Assert().Equal(tc.expected, effects)
 		})
@@ -2814,7 +2814,7 @@ func TestTrustlineSponsorshipEffects(t *testing.T) {
 		ledgerSequence: 1,
 	}
 
-	effects, err := operation.effects()
+	effects, err := operation.addEffects()
 	assert.NoError(t, err)
 	assert.Equal(t, expected, effects)
 
@@ -3448,7 +3448,7 @@ func TestLiquidityPoolEffects(t *testing.T) {
 				ledgerSequence: 1,
 			}
 
-			effects, err := operation.effects()
+			effects, err := operation.addEffects()
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expected, effects)
 		})

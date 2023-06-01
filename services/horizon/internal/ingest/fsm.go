@@ -3,6 +3,7 @@ package ingest
 import (
 	"context"
 	"fmt"
+	"github.com/stellar/go/services/horizon/internal/db2/history"
 	"os"
 	"strings"
 	"time"
@@ -680,9 +681,6 @@ func (h reingestHistoryRangeState) String() string {
 }
 
 func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger uint32) error {
-	if s.historyQ.GetTx() == nil {
-		return errors.New("expected transaction to be present")
-	}
 	startTime := time.Now()
 	// Clear history data before ingesting - used in `reingest range` command.
 	//start, end, err := toid.LedgerRangeInclusive(
@@ -697,6 +695,19 @@ func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger u
 	//if err != nil {
 	//	return errors.Wrap(err, "error in DeleteRangeAll")
 	//}
+	accountLoader := history.NewAccountLoader()
+	cbLoader := history.NewClaimableBalanceLoader()
+	lpLoader := history.NewClaimableBalanceLoader()
+	assetLoader := history.NewAssetLoader()
+	processors := buildTransactionProcessor(
+		nil,
+		nil,
+		s.historyQ,
+		accountLoader,
+		cbLoader,
+		lpLoader,
+		assetLoader,
+	)
 
 	for cur := fromLedger; cur <= toLedger; cur++ {
 		var ledgerCloseMeta xdr.LedgerCloseMeta
@@ -726,12 +737,51 @@ func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger u
 		//if err != nil {
 		//	return err
 		//}
-		if err = runTransactionProcessorsOnLedger(s, ledgerCloseMeta); err != nil {
+		if err = s.runner.ApplyProcessorsOnLedger(processors, ledgerCloseMeta); err != nil {
 			return err
 		}
+		//if err = runTransactionProcessorsOnLedger(s, ledgerCloseMeta); err != nil {
+		//	return err
+		//}
 	}
-	log.WithField("duration", time.Since(startTime)).Info("finished!")
+	log.WithField("duration", time.Since(startTime)).Info("processors run duration")
 
+	startTime = time.Now()
+
+	if err := s.historyQ.BeginPgxTx(s.ctx); err != nil {
+		return errors.Wrap(err, "Error starting a transaction")
+	}
+	defer s.historyQ.RollbackPgxTx(s.ctx)
+
+	if err := accountLoader.Exec(s.ctx, s.historyQ); err != nil {
+		return err
+	}
+	if err := cbLoader.Exec(s.ctx, s.historyQ); err != nil {
+		return err
+	}
+	if err := lpLoader.Exec(s.ctx, s.historyQ); err != nil {
+		return err
+	}
+	if err := assetLoader.Exec(s.ctx, s.historyQ); err != nil {
+		return err
+	}
+
+	if err := processors.Commit(s.ctx, s.historyQ); err != nil {
+		return err
+	}
+
+	if err := s.historyQ.CommitPgxTx(s.ctx); err != nil {
+		return errors.Wrap(err, commitErrMsg)
+	}
+
+	log.WithField("duration", time.Since(startTime)).Info("processors commit duration")
+	total := time.Duration(0)
+	for key, elapsed := range processors.processorsRunDurations {
+		if !strings.HasSuffix(key, "_commit") {
+			total += elapsed
+		}
+	}
+	log.WithField("duration", total).Info("processors run duration sum")
 	return nil
 }
 
@@ -776,22 +826,13 @@ func (h reingestHistoryRangeState) run(s *system) (transition, error) {
 		//}
 		startTime = time.Now()
 
-		if err := s.historyQ.Begin(); err != nil {
-			return stop(), errors.Wrap(err, "Error starting a transaction")
-		}
-		defer s.historyQ.Rollback()
-
-		// acquire distributed lock so no one else can perform ingestion operations.
-		if _, err := s.historyQ.GetLastLedgerIngest(s.ctx); err != nil {
-			return stop(), errors.Wrap(err, getLastIngestedErrMsg)
-		}
+		//// acquire distributed lock so no one else can perform ingestion operations.
+		//if _, err := s.historyQ.GetLastLedgerIngest(s.ctx); err != nil {
+		//	return stop(), errors.Wrap(err, getLastIngestedErrMsg)
+		//}
 
 		if err := h.ingestRange(s, h.fromLedger, h.toLedger); err != nil {
 			return stop(), err
-		}
-
-		if err := s.historyQ.Commit(); err != nil {
-			return stop(), errors.Wrap(err, commitErrMsg)
 		}
 	} else {
 		lastIngestedLedger, err := s.historyQ.GetLastLedgerIngestNonBlocking(s.ctx)
@@ -835,10 +876,14 @@ func (h reingestHistoryRangeState) run(s *system) (transition, error) {
 		}
 	}
 
+	rebuildStartTime := time.Now()
 	err := s.historyQ.RebuildTradeAggregationBuckets(s.ctx, h.fromLedger, h.toLedger, s.config.RoundingSlippageFilter)
 	if err != nil {
 		return stop(), errors.Wrap(err, "Error rebuilding trade aggregations")
 	}
+	log.WithFields(logpkg.F{
+		"duration": time.Since(rebuildStartTime),
+	}).Info("rebuild trade aggregations time")
 
 	log.WithFields(logpkg.F{
 		"from":     h.fromLedger,

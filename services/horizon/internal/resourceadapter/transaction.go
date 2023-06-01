@@ -60,26 +60,26 @@ func PopulateTransaction(
 	// nil dereferences.
 	dest.Preconditions = &protocol.TransactionPreconditions{}
 
-	if !row.TimeBounds.Null {
-		// Action needed in release: horizon-v3.0.0: remove ValidBefore and ValidAfter
-		dest.ValidBefore = timeString(row.TimeBounds.Upper)
-		dest.ValidAfter = timeString(row.TimeBounds.Lower)
-
-		dest.Preconditions.TimeBounds = &protocol.TransactionPreconditionsTimebounds{
-			MaxTime: timestampString(row.TimeBounds.Upper),
-			MinTime: timestampString(row.TimeBounds.Lower),
-		}
-	}
-
-	if !row.LedgerBounds.Null {
-		dest.Preconditions.LedgerBounds = &protocol.TransactionPreconditionsLedgerbounds{}
-		if row.LedgerBounds.MinLedger.Valid {
-			dest.Preconditions.LedgerBounds.MinLedger = uint32(row.LedgerBounds.MinLedger.Int64)
-		}
-		if row.LedgerBounds.MaxLedger.Valid {
-			dest.Preconditions.LedgerBounds.MaxLedger = uint32(row.LedgerBounds.MaxLedger.Int64)
-		}
-	}
+	//if !row.TimeBounds.Null {
+	//	// Action needed in release: horizon-v3.0.0: remove ValidBefore and ValidAfter
+	//	dest.ValidBefore = timeString(row.TimeBounds.Upper)
+	//	dest.ValidAfter = timeString(row.TimeBounds.Lower)
+	//
+	//	dest.Preconditions.TimeBounds = &protocol.TransactionPreconditionsTimebounds{
+	//		MaxTime: timestampString(row.TimeBounds.Upper),
+	//		MinTime: timestampString(row.TimeBounds.Lower),
+	//	}
+	//}
+	//
+	//if !row.LedgerBounds.Null {
+	//	dest.Preconditions.LedgerBounds = &protocol.TransactionPreconditionsLedgerbounds{}
+	//	if row.LedgerBounds.MinLedger.Valid {
+	//		dest.Preconditions.LedgerBounds.MinLedger = uint32(row.LedgerBounds.MinLedger.Int64)
+	//	}
+	//	if row.LedgerBounds.MaxLedger.Valid {
+	//		dest.Preconditions.LedgerBounds.MaxLedger = uint32(row.LedgerBounds.MaxLedger.Int64)
+	//	}
+	//}
 
 	if row.MinAccountSequence.Valid {
 		dest.Preconditions.MinAccountSequence = fmt.Sprint(row.MinAccountSequence.Int64)

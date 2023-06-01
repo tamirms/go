@@ -7,10 +7,12 @@ import (
 	"fmt"
 
 	"github.com/guregu/null"
+
 	"github.com/stellar/go/amount"
 	"github.com/stellar/go/ingest"
 	"github.com/stellar/go/protocols/horizon/base"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
+	"github.com/stellar/go/support/db"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/toid"
 	"github.com/stellar/go/xdr"
@@ -18,28 +20,23 @@ import (
 
 // OperationProcessor operations processor
 type OperationProcessor struct {
-	operationsQ history.QOperations
-
-	sequence uint32
-	batch    history.OperationBatchInsertBuilder
+	batch history.OperationBatchInsertBuilder
 }
 
-func NewOperationProcessor(operationsQ history.QOperations, sequence uint32) *OperationProcessor {
+func NewOperationProcessor(batch history.OperationBatchInsertBuilder) *OperationProcessor {
 	return &OperationProcessor{
-		operationsQ: operationsQ,
-		sequence:    sequence,
-		batch:       operationsQ.NewOperationBatchInsertBuilder(maxBatchSize),
+		batch: batch,
 	}
 }
 
 // ProcessTransaction process the given transaction
-func (p *OperationProcessor) ProcessTransaction(ctx context.Context, transaction ingest.LedgerTransaction) error {
+func (p *OperationProcessor) ProcessTransaction(lcm xdr.LedgerCloseMeta, transaction ingest.LedgerTransaction) error {
 	for i, op := range transaction.Envelope.Operations() {
 		operation := transactionOperationWrapper{
 			index:          uint32(i),
 			transaction:    transaction,
 			operation:      op,
-			ledgerSequence: p.sequence,
+			ledgerSequence: lcm.LedgerSequence(),
 		}
 		details, err := operation.Details()
 		if err != nil {
@@ -57,7 +54,8 @@ func (p *OperationProcessor) ProcessTransaction(ctx context.Context, transaction
 		if source.Type == xdr.CryptoKeyTypeKeyTypeMuxedEd25519 {
 			sourceAccountMuxed = null.StringFrom(source.Address())
 		}
-		if err := p.batch.Add(ctx,
+
+		if err := p.batch.Add(
 			operation.ID(),
 			operation.TransactionID(),
 			operation.Order(),
@@ -73,8 +71,8 @@ func (p *OperationProcessor) ProcessTransaction(ctx context.Context, transaction
 	return nil
 }
 
-func (p *OperationProcessor) Commit(ctx context.Context) error {
-	return p.batch.Exec(ctx)
+func (p *OperationProcessor) Commit(ctx context.Context, session db.SessionInterface) error {
+	return p.batch.Exec(ctx, session)
 }
 
 // transactionOperationWrapper represents the data for a single operation within a transaction
