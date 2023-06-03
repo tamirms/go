@@ -66,7 +66,7 @@ func (ps *ParallelSystems) runReingestWorker(s System, stop <-chan struct{}, rei
 		case <-stop:
 			return rangeError{}
 		case reingestRange := <-reingestJobQueue:
-			err := s.ReingestRange([]history.LedgerRange{reingestRange}, false)
+			err := s.ReingestRange([]history.LedgerRange{reingestRange}, false, true)
 			if err != nil {
 				return rangeError{
 					err:         err,

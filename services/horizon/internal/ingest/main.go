@@ -193,7 +193,7 @@ type System interface {
 	StressTest(numTransactions, changesPerTransaction int) error
 	VerifyRange(fromLedger, toLedger uint32, verifyState bool) error
 	BuildState(sequence uint32, skipChecks bool) error
-	ReingestRange(ledgerRanges []history.LedgerRange, force bool) error
+	ReingestRange(ledgerRanges []history.LedgerRange, force, parallel bool) error
 	BuildGenesisState() error
 	Shutdown()
 }
@@ -592,7 +592,7 @@ func validateRanges(ledgerRanges []history.LedgerRange) error {
 
 // ReingestRange runs the ingestion pipeline on the range of ledgers ingesting
 // history data only.
-func (s *system) ReingestRange(ledgerRanges []history.LedgerRange, force bool) error {
+func (s *system) ReingestRange(ledgerRanges []history.LedgerRange, force, parallel bool) error {
 	if err := validateRanges(ledgerRanges); err != nil {
 		return err
 	}
@@ -602,6 +602,7 @@ func (s *system) ReingestRange(ledgerRanges []history.LedgerRange, force bool) e
 				fromLedger: cur.StartSequence,
 				toLedger:   cur.EndSequence,
 				force:      force,
+				parallel:   parallel,
 			})
 		}
 		err := run()

@@ -670,6 +670,7 @@ type reingestHistoryRangeState struct {
 	fromLedger uint32
 	toLedger   uint32
 	force      bool
+	parallel   bool
 }
 
 func (h reingestHistoryRangeState) String() string {
@@ -900,21 +901,24 @@ func (h reingestHistoryRangeState) run(s *system) (transition, error) {
 		}
 	}
 
-	//rebuildStartTime := time.Now()
-	//for i := 0; i < 4; i++ {
-	//	err := s.historyQ.RebuildTradeAggregationBuckets(s.ctx, h.fromLedger, h.toLedger, s.config.RoundingSlippageFilter)
-	//	if err != nil {
-	//		if i == 3 {
-	//			return stop(), errors.Wrap(err, "Error rebuilding trade aggregations")
-	//		}
-	//		continue
-	//	}
-	//
-	//}
-	//log.WithFields(logpkg.F{
-	//	"current_state": h,
-	//	"duration":      time.Since(rebuildStartTime),
-	//}).Info("rebuild trade aggregations time")
+	if !h.parallel {
+		rebuildStartTime := time.Now()
+		for i := 0; i < 4; i++ {
+			err := s.historyQ.RebuildTradeAggregationBuckets(s.ctx, h.fromLedger, h.toLedger, s.config.RoundingSlippageFilter)
+			if err != nil {
+				if i == 3 {
+					return stop(), errors.Wrap(err, "Error rebuilding trade aggregations")
+				}
+				continue
+			} else {
+				break
+			}
+		}
+		log.WithFields(logpkg.F{
+			"current_state": h,
+			"duration":      time.Since(rebuildStartTime),
+		}).Info("rebuild trade aggregations time")
+	}
 
 	log.WithFields(logpkg.F{
 		"current_state": h,
