@@ -710,6 +710,7 @@ func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger u
 		assetLoader,
 	)
 
+	decoder := xdr.NewBytesDecoder()
 	for cur := fromLedger; cur <= toLedger; cur++ {
 		var ledgerCloseMeta xdr.LedgerCloseMeta
 		filename := fmt.Sprintf("/Users/tamir/work/gopath/src/github.com/stellar/go/txmeta/%d", cur)
@@ -717,7 +718,7 @@ func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger u
 		if err != nil {
 			return err
 		}
-		if err = ledgerCloseMeta.UnmarshalBinary(bin); err != nil {
+		if _, err = decoder.DecodeBytes(&ledgerCloseMeta, bin); err != nil {
 			return err
 		}
 		//

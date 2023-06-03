@@ -249,27 +249,7 @@ func (a *Loader) GetNow(key string) (int64, error) {
 	}
 }
 
-func (a *Loader) Exec(ctx context.Context, session db.SessionInterface) error {
-	keys := make([]interface{}, 0, len(a.set))
-	for key := range a.set {
-		keys = append(keys, key)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i].(string) < keys[j].(string)
-	})
-
-	err := bulkInsert(
-		ctx,
-		session,
-		a.table,
-		a.conflictFields,
-		a.schema(keys),
-		[]string{},
-	)
-	if err != nil {
-		return err
-	}
-
+func (a *Loader) lookupKeys(ctx context.Context, session db.SessionInterface, keys []interface{}) error {
 	const batchSize = 50000
 	for i := 0; i < len(keys); i += batchSize {
 		end := i + batchSize
@@ -285,6 +265,51 @@ func (a *Loader) Exec(ctx context.Context, session db.SessionInterface) error {
 		}
 	}
 	return nil
+}
+
+func (a *Loader) Exec(ctx context.Context, session db.SessionInterface) error {
+	if len(a.set) == 0 {
+		return nil
+	}
+	keys := make([]interface{}, 0, len(a.set))
+	for key := range a.set {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i].(string) < keys[j].(string)
+	})
+
+	if err := a.lookupKeys(ctx, session, keys); err != nil {
+		return err
+	}
+	insert := 0
+	for i, key := range keys {
+		if _, ok := a.ids[key.(string)]; ok {
+			continue
+		}
+		if i != insert {
+			keys[insert] = keys[i]
+		}
+		insert++
+	}
+	if insert == 0 {
+		return nil
+	}
+	keys = keys[:insert]
+
+	err := bulkInsert(
+		ctx,
+		session,
+		a.table,
+		a.conflictFields,
+		a.schema(keys),
+		[]string{},
+	)
+	if err != nil {
+		return err
+	}
+
+	return a.lookupKeys(ctx, session, keys)
 }
 
 func (a *Loader) Reset() {
