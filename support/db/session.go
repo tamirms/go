@@ -89,7 +89,10 @@ func (s *Session) BeginPgxTx(ctx context.Context) error {
 		return errors.New("already in transaction")
 	}
 
-	tx, err := s.PgxPool.Begin(ctx)
+	tx, err := s.PgxPool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.ReadCommitted,
+		AccessMode: pgx.ReadWrite,
+	})
 	if err != nil {
 		if knownErr := s.replaceWithKnownError(err, context.Background()); knownErr != nil {
 			return knownErr

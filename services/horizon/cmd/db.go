@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -438,10 +439,13 @@ func runDBReingestRange(ledgerRanges []history.LedgerRange, reingestForce bool, 
 			return systemErr
 		}
 
-		return system.ReingestRange(
+		startTime := time.Now()
+		err = system.ReingestRange(
 			ledgerRanges,
 			parallelJobSize,
 		)
+		hlog.WithField("duration", time.Since(startTime)).Info("total reingestion duration")
+		return err
 	}
 
 	system, systemErr := ingest.NewSystem(ingestConfig)

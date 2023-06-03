@@ -1,8 +1,10 @@
 package ingest
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/stellar/go/services/horizon/internal/db2/history"
 	"github.com/stellar/go/support/errors"
@@ -99,6 +101,8 @@ func calculateParallelLedgerBatchSize(rangeSize uint32, batchSizeSuggestion uint
 	if batchSize == 0 || rangeSize/batchSize < uint32(workerCount) {
 		// let's try to make use of all the workers
 		batchSize = rangeSize / uint32(workerCount)
+		fmt.Println("make use of all workers", batchSize)
+		return batchSize
 	}
 	// Use a minimum batch size to make it worth it in terms of overhead
 	if batchSize < minBatchSize {
@@ -181,5 +185,19 @@ func (ps *ParallelSystems) ReingestRange(ledgerRanges []history.LedgerRange, bat
 		lastLedger := ledgerRanges[len(ledgerRanges)-1].EndSequence
 		return errors.Wrapf(lowestRangeErr, "job failed, recommended restart range: [%d, %d]", lowestRangeErr.ledgerRange.StartSequence, lastLedger)
 	}
+
+	rebuildStartTime := time.Now()
+	q := history.Q{ps.config.HistorySession}
+	for _, ledgerRange := range ledgerRanges {
+		err := q.RebuildTradeAggregationBuckets(context.Background(), ledgerRange.StartSequence, ledgerRange.EndSequence, ps.config.RoundingSlippageFilter)
+		if err != nil {
+			return errors.Wrap(err, "Error rebuilding trade aggregations")
+		}
+
+	}
+	log.WithFields(logpkg.F{
+		"duration": time.Since(rebuildStartTime),
+	}).Info("rebuild trade aggregations time")
+
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/stellar/go/services/horizon/internal/db2/history"
+	"github.com/stellar/go/toid"
 	"os"
 	"strings"
 	"time"
@@ -683,18 +684,18 @@ func (h reingestHistoryRangeState) String() string {
 func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger uint32) error {
 	startTime := time.Now()
 	// Clear history data before ingesting - used in `reingest range` command.
-	//start, end, err := toid.LedgerRangeInclusive(
-	//	int32(fromLedger),
-	//	int32(toLedger),
-	//)
-	//if err != nil {
-	//	return errors.Wrap(err, "Invalid range")
-	//}
-	//
-	//err = s.historyQ.DeleteRangeAll(s.ctx, start, end)
-	//if err != nil {
-	//	return errors.Wrap(err, "error in DeleteRangeAll")
-	//}
+	start, end, err := toid.LedgerRangeInclusive(
+		int32(fromLedger),
+		int32(toLedger),
+	)
+	if err != nil {
+		return errors.Wrap(err, "Invalid range")
+	}
+
+	err = s.historyQ.DeleteRangeAll(s.ctx, start, end)
+	if err != nil {
+		return errors.Wrap(err, "error in DeleteRangeAll")
+	}
 	accountLoader := history.NewAccountLoader()
 	cbLoader := history.NewClaimableBalanceLoader()
 	lpLoader := history.NewClaimableBalanceLoader()
@@ -744,27 +745,43 @@ func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger u
 		//	return err
 		//}
 	}
-	log.WithField("duration", time.Since(startTime)).Info("processors run duration")
+	log.WithField("current_state", h).WithField("duration", time.Since(startTime)).Info("processors run duration")
 
 	startTime = time.Now()
+
+	err = func() error {
+		if err := s.historyQ.BeginPgxTx(s.ctx); err != nil {
+			return errors.Wrap(err, "Error starting a transaction")
+		}
+		txTime := time.Now()
+		defer s.historyQ.RollbackPgxTx(s.ctx)
+
+		if err := accountLoader.Exec(s.ctx, s.historyQ); err != nil {
+			return err
+		}
+		if err := cbLoader.Exec(s.ctx, s.historyQ); err != nil {
+			return err
+		}
+		if err := lpLoader.Exec(s.ctx, s.historyQ); err != nil {
+			return err
+		}
+		if err := assetLoader.Exec(s.ctx, s.historyQ); err != nil {
+			return err
+		}
+		log.WithField("current_state", h).WithField("duration", time.Since(txTime)).Info("committed loaders")
+		if err := s.historyQ.CommitPgxTx(s.ctx); err != nil {
+			return errors.Wrap(err, commitErrMsg)
+		}
+		return nil
+	}()
+	if err != nil {
+		return err
+	}
 
 	if err := s.historyQ.BeginPgxTx(s.ctx); err != nil {
 		return errors.Wrap(err, "Error starting a transaction")
 	}
 	defer s.historyQ.RollbackPgxTx(s.ctx)
-
-	if err := accountLoader.Exec(s.ctx, s.historyQ); err != nil {
-		return err
-	}
-	if err := cbLoader.Exec(s.ctx, s.historyQ); err != nil {
-		return err
-	}
-	if err := lpLoader.Exec(s.ctx, s.historyQ); err != nil {
-		return err
-	}
-	if err := assetLoader.Exec(s.ctx, s.historyQ); err != nil {
-		return err
-	}
 
 	if err := processors.Commit(s.ctx, s.historyQ); err != nil {
 		return err
@@ -774,14 +791,20 @@ func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger u
 		return errors.Wrap(err, commitErrMsg)
 	}
 
-	log.WithField("duration", time.Since(startTime)).Info("processors commit duration")
+	log.WithField("current_state", h).WithField("duration", time.Since(startTime)).Info("processors commit duration")
 	total := time.Duration(0)
+	commitTotal := time.Duration(0)
 	for key, elapsed := range processors.processorsRunDurations {
 		if !strings.HasSuffix(key, "_commit") {
 			total += elapsed
+		} else {
+			commitTotal += elapsed
 		}
 	}
-	log.WithField("duration", total).Info("processors run duration sum")
+	log.WithField("current_state", h).
+		WithField("duration", total).
+		WithField("commit_duration", commitTotal).
+		Info("processors run duration sum")
 	return nil
 }
 
@@ -820,7 +843,7 @@ func (h reingestHistoryRangeState) run(s *system) (transition, error) {
 
 	var startTime time.Time
 
-	if h.force {
+	if true || h.force {
 		//if t, err := h.prepareRange(s); err != nil {
 		//	return t, err
 		//}
@@ -876,19 +899,27 @@ func (h reingestHistoryRangeState) run(s *system) (transition, error) {
 		}
 	}
 
-	rebuildStartTime := time.Now()
-	err := s.historyQ.RebuildTradeAggregationBuckets(s.ctx, h.fromLedger, h.toLedger, s.config.RoundingSlippageFilter)
-	if err != nil {
-		return stop(), errors.Wrap(err, "Error rebuilding trade aggregations")
-	}
-	log.WithFields(logpkg.F{
-		"duration": time.Since(rebuildStartTime),
-	}).Info("rebuild trade aggregations time")
+	//rebuildStartTime := time.Now()
+	//for i := 0; i < 4; i++ {
+	//	err := s.historyQ.RebuildTradeAggregationBuckets(s.ctx, h.fromLedger, h.toLedger, s.config.RoundingSlippageFilter)
+	//	if err != nil {
+	//		if i == 3 {
+	//			return stop(), errors.Wrap(err, "Error rebuilding trade aggregations")
+	//		}
+	//		continue
+	//	}
+	//
+	//}
+	//log.WithFields(logpkg.F{
+	//	"current_state": h,
+	//	"duration":      time.Since(rebuildStartTime),
+	//}).Info("rebuild trade aggregations time")
 
 	log.WithFields(logpkg.F{
-		"from":     h.fromLedger,
-		"to":       h.toLedger,
-		"duration": time.Since(startTime).Seconds(),
+		"current_state": h,
+		"from":          h.fromLedger,
+		"to":            h.toLedger,
+		"duration":      time.Since(startTime),
 	}).Info("Reingestion done")
 
 	return stop(), nil
