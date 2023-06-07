@@ -10,6 +10,7 @@ import (
 	"github.com/stellar/go/xdr"
 	"sort"
 	"strings"
+	"time"
 )
 
 type FutureID struct {
@@ -279,9 +280,11 @@ func (a *Loader) Exec(ctx context.Context, session db.SessionInterface) error {
 		return keys[i].(string) < keys[j].(string)
 	})
 
+	startTime := time.Now()
 	if err := a.lookupKeys(ctx, session, keys); err != nil {
 		return err
 	}
+	fmt.Printf("%v lookupkeys1 %v found %v\n", a.table, time.Since(startTime), len(a.ids))
 	insert := 0
 	for i, key := range keys {
 		if _, ok := a.ids[key.(string)]; ok {
@@ -297,6 +300,7 @@ func (a *Loader) Exec(ctx context.Context, session db.SessionInterface) error {
 	}
 	keys = keys[:insert]
 
+	startTime = time.Now()
 	err := bulkInsert(
 		ctx,
 		session,
@@ -308,8 +312,12 @@ func (a *Loader) Exec(ctx context.Context, session db.SessionInterface) error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("%v %v bulkinsert %v\n", a.table, len(keys), time.Since(startTime))
 
-	return a.lookupKeys(ctx, session, keys)
+	startTime = time.Now()
+	err = a.lookupKeys(ctx, session, keys)
+	fmt.Printf("%v lookupkeys2 %v\n", a.table, time.Since(startTime))
+	return err
 }
 
 func (a *Loader) Reset() {

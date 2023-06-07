@@ -699,7 +699,7 @@ func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger u
 	}
 	accountLoader := history.NewAccountLoader()
 	cbLoader := history.NewClaimableBalanceLoader()
-	lpLoader := history.NewClaimableBalanceLoader()
+	lpLoader := history.NewLiquidityPoolLoader()
 	assetLoader := history.NewAssetLoader()
 	processors := buildTransactionProcessor(
 		nil,

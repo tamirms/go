@@ -155,7 +155,7 @@ func buildTransactionProcessor(
 		processors.NewParticipantsProcessor(
 			accountLoader,
 			historyQ.NewTransactionParticipantsBatchInsertBuilder(),
-			historyQ.NewOperationParticipantBatchInsertBuilder(),
+			historyQ.NewOperationLiquidityPoolBatchInsertBuilder(),
 		),
 		processors.NewTransactionProcessor(historyQ.NewTransactionBatchInsertBuilder()),
 		processors.NewClaimableBalancesTransactionProcessor(
