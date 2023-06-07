@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"github.com/jackc/pgx/v5/pgtype"
 	"testing"
 	"time"
 
@@ -315,20 +314,20 @@ func FeeBumpScenario(tt *test.T, q *Q, successful bool) FeeBumpFixture {
 			TxMeta:           "AAAAAQAAAAAAAAAA",
 			MemoType:         "none",
 			Memo:             null.NewString("", false),
-			TimeBounds: pgtype.Range[pgtype.Int8]{
-				Lower: pgtype.Int8{
-					Int64: 2,
-					Valid: true,
-				},
-				Upper: pgtype.Int8{
-					Int64: 4,
-					Valid: true,
-				},
-				LowerType: pgtype.Inclusive,
-				UpperType: pgtype.Exclusive,
-				Valid:     true,
-			},
-			LedgerBounds:         pgtype.Range[pgtype.Int8]{Valid: false},
+			//TimeBounds: pgtype.Range[pgtype.Int8]{
+			//	Lower: pgtype.Int8{
+			//		Int64: 2,
+			//		Valid: true,
+			//	},
+			//	Upper: pgtype.Int8{
+			//		Int64: 4,
+			//		Valid: true,
+			//	},
+			//	LowerType: pgtype.Inclusive,
+			//	UpperType: pgtype.Exclusive,
+			//	Valid:     true,
+			//},
+			//LedgerBounds:         pgtype.Range[pgtype.Int8]{Valid: false},
 			ExtraSigners:         nil,
 			Signatures:           signatures(fixture.Envelope.FeeBumpSignatures()),
 			InnerSignatures:      signatures(fixture.Envelope.Signatures()),

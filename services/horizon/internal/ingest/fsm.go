@@ -792,16 +792,16 @@ func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger u
 		return err
 	}
 
-	if err := s.historyQ.BeginPgxTx(s.ctx); err != nil {
+	if err := s.historyQ.Begin(); err != nil {
 		return errors.Wrap(err, "Error starting a transaction")
 	}
-	defer s.historyQ.RollbackPgxTx(s.ctx)
+	defer s.historyQ.Rollback()
 
 	if err := processors.Commit(s.ctx, s.historyQ); err != nil {
 		return err
 	}
 
-	if err := s.historyQ.CommitPgxTx(s.ctx); err != nil {
+	if err := s.historyQ.Commit(); err != nil {
 		return errors.Wrap(err, commitErrMsg)
 	}
 

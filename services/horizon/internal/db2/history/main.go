@@ -730,8 +730,8 @@ type TransactionFilteredTmp struct {
 }
 
 func (t *Transaction) HasPreconditions() bool {
-	return t.TimeBounds.Valid ||
-		t.LedgerBounds.Valid ||
+	return !t.TimeBounds.Null ||
+		!t.LedgerBounds.Null ||
 		t.MinAccountSequence.Valid ||
 		(t.MinAccountSequenceAge.Valid &&
 			t.MinAccountSequenceAge.String != "0") ||

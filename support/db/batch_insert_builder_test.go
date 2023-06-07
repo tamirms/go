@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"github.com/lib/pq"
 	"testing"
 
 	"github.com/stellar/go/support/db/dbtest"
@@ -205,8 +206,8 @@ CREATE TABLE  IF NOT EXISTS people (
 	sess, err := Open("postgres", db.DSN)
 	defer sess.Close()
 
-	assert.NoError(t, sess.BeginPgxTx(context.Background()))
-	defer sess.RollbackPgxTx(context.Background())
+	assert.NoError(t, sess.Begin())
+	defer sess.Rollback()
 
 	insertBuilder := &FastBatchInsertBuilder{}
 
@@ -215,13 +216,13 @@ CREATE TABLE  IF NOT EXISTS people (
 
 	err = insertBuilder.Row(map[string]interface{}{
 		"name":          "bubba",
-		"hunger_levels": []int{1, 2, 3},
+		"hunger_levels": pq.Array([]int{1, 2, 3}),
 	})
 	assert.NoError(t, err)
 
 	err = insertBuilder.Row(map[string]interface{}{
 		"name":          "jonx",
-		"hunger_levels": []int{4},
+		"hunger_levels": pq.Array([]int{4}),
 	})
 	assert.NoError(t, err)
 

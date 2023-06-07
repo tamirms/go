@@ -2,7 +2,7 @@ package db
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5"
+	"github.com/lib/pq"
 	"reflect"
 	"sort"
 
@@ -89,7 +89,20 @@ func (b *FastBatchInsertBuilder) Exec(ctx context.Context, session SessionInterf
 		return nil
 	}
 
-	_, err := session.CopyFrom(ctx, pgx.Identifier{tableName}, b.columns, pgx.CopyFromRows(b.rows))
+	tx := session.GetTx()
+	stmt, err := tx.Prepare(pq.CopyIn(tableName, b.columns...))
+	if err != nil {
+		return err
+	}
+
+	for _, row := range b.rows {
+		_, err = stmt.ExecContext(ctx, row...)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = stmt.Close()
 	if err != nil {
 		return err
 	}

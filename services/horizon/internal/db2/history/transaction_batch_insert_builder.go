@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"github.com/jackc/pgx/v5/pgtype"
 	"strings"
 	"time"
 
@@ -124,36 +123,36 @@ func memo(transaction ingest.LedgerTransaction) null.String {
 
 type TransactionWithoutLedger struct {
 	TotalOrderID
-	TransactionHash             string                    `db:"transaction_hash"`
-	LedgerSequence              int32                     `db:"ledger_sequence"`
-	ApplicationOrder            int32                     `db:"application_order"`
-	Account                     string                    `db:"account"`
-	AccountMuxed                null.String               `db:"account_muxed"`
-	AccountSequence             int64                     `db:"account_sequence"`
-	MaxFee                      int64                     `db:"max_fee"`
-	FeeCharged                  int64                     `db:"fee_charged"`
-	OperationCount              int32                     `db:"operation_count"`
-	TxEnvelope                  string                    `db:"tx_envelope"`
-	TxResult                    string                    `db:"tx_result"`
-	TxMeta                      string                    `db:"tx_meta"`
-	TxFeeMeta                   string                    `db:"tx_fee_meta"`
-	Signatures                  pq.StringArray            `db:"signatures"`
-	MemoType                    string                    `db:"memo_type"`
-	Memo                        null.String               `db:"memo"`
-	TimeBounds                  pgtype.Range[pgtype.Int8] `db:"time_bounds"`
-	LedgerBounds                pgtype.Range[pgtype.Int8] `db:"ledger_bounds"`
-	MinAccountSequence          null.Int                  `db:"min_account_sequence"`
-	MinAccountSequenceAge       null.String               `db:"min_account_sequence_age"`
-	MinAccountSequenceLedgerGap null.Int                  `db:"min_account_sequence_ledger_gap"`
-	ExtraSigners                pq.StringArray            `db:"extra_signers"`
-	CreatedAt                   time.Time                 `db:"created_at"`
-	UpdatedAt                   time.Time                 `db:"updated_at"`
-	Successful                  bool                      `db:"successful"`
-	FeeAccount                  null.String               `db:"fee_account"`
-	FeeAccountMuxed             null.String               `db:"fee_account_muxed"`
-	InnerTransactionHash        null.String               `db:"inner_transaction_hash"`
-	NewMaxFee                   null.Int                  `db:"new_max_fee"`
-	InnerSignatures             pq.StringArray            `db:"inner_signatures"`
+	TransactionHash             string         `db:"transaction_hash"`
+	LedgerSequence              int32          `db:"ledger_sequence"`
+	ApplicationOrder            int32          `db:"application_order"`
+	Account                     string         `db:"account"`
+	AccountMuxed                null.String    `db:"account_muxed"`
+	AccountSequence             int64          `db:"account_sequence"`
+	MaxFee                      int64          `db:"max_fee"`
+	FeeCharged                  int64          `db:"fee_charged"`
+	OperationCount              int32          `db:"operation_count"`
+	TxEnvelope                  string         `db:"tx_envelope"`
+	TxResult                    string         `db:"tx_result"`
+	TxMeta                      string         `db:"tx_meta"`
+	TxFeeMeta                   string         `db:"tx_fee_meta"`
+	Signatures                  pq.StringArray `db:"signatures"`
+	MemoType                    string         `db:"memo_type"`
+	Memo                        null.String    `db:"memo"`
+	TimeBounds                  TimeBounds     `db:"time_bounds"`
+	LedgerBounds                LedgerBounds   `db:"ledger_bounds"`
+	MinAccountSequence          null.Int       `db:"min_account_sequence"`
+	MinAccountSequenceAge       null.String    `db:"min_account_sequence_age"`
+	MinAccountSequenceLedgerGap null.Int       `db:"min_account_sequence_ledger_gap"`
+	ExtraSigners                pq.StringArray `db:"extra_signers"`
+	CreatedAt                   time.Time      `db:"created_at"`
+	UpdatedAt                   time.Time      `db:"updated_at"`
+	Successful                  bool           `db:"successful"`
+	FeeAccount                  null.String    `db:"fee_account"`
+	FeeAccountMuxed             null.String    `db:"fee_account_muxed"`
+	InnerTransactionHash        null.String    `db:"inner_transaction_hash"`
+	NewMaxFee                   null.Int       `db:"new_max_fee"`
+	InnerSignatures             pq.StringArray `db:"inner_signatures"`
 }
 
 func transactionToRow(transaction ingest.LedgerTransaction, sequence uint32, encodingBuffer *xdr.EncodingBuffer) (TransactionWithoutLedger, error) {
