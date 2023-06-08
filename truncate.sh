@@ -1,0 +1,3 @@
+#!/bin/bash
+
+psql $DATABASE_URL?sslmode=disable -c "TRUNCATE history_accounts; TRUNCATE history_assets; TRUNCATE history_claimable_balances; TRUNCATE history_effects; TRUNCATE history_ledgers; TRUNCATE history_liquidity_pools; TRUNCATE history_operation_claimable_balances; TRUNCATE history_operation_claimable_balances; TRUNCATE history_operation_liquidity_pools; TRUNCATE history_operation_participants; TRUNCATE history_operations; TRUNCATE history_trades; TRUNCATE history_trades_60000; TRUNCATE history_transaction_claimable_balances; TRUNCATE history_transaction_liquidity_pools; TRUNCATE history_transaction_participants; TRUNCATE history_transactions;"
