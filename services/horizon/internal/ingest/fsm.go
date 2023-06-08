@@ -671,6 +671,7 @@ type reingestHistoryRangeState struct {
 	toLedger   uint32
 	force      bool
 	parallel   bool
+	export     bool
 }
 
 func (h reingestHistoryRangeState) String() string {
@@ -693,9 +694,11 @@ func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger u
 		return errors.Wrap(err, "Invalid range")
 	}
 
-	err = s.historyQ.DeleteRangeAll(s.ctx, start, end)
-	if err != nil {
-		return errors.Wrap(err, "error in DeleteRangeAll")
+	if !h.export {
+		err = s.historyQ.DeleteRangeAll(s.ctx, start, end)
+		if err != nil {
+			return errors.Wrap(err, "error in DeleteRangeAll")
+		}
 	}
 	accountLoader := history.NewAccountLoader()
 	cbLoader := history.NewClaimableBalanceLoader()
@@ -714,32 +717,38 @@ func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger u
 	decoder := xdr.NewBytesDecoder()
 	for cur := fromLedger; cur <= toLedger; cur++ {
 		var ledgerCloseMeta xdr.LedgerCloseMeta
-		filename := fmt.Sprintf("/Users/tamir/work/gopath/src/github.com/stellar/go/txmeta/%d", cur)
-		bin, err := os.ReadFile(filename)
-		if err != nil {
-			return err
+		filename := fmt.Sprintf("./txmeta/%d", cur)
+		if h.export {
+			ledgerCloseMeta, err = s.ledgerBackend.GetLedger(s.ctx, cur)
+			if err != nil {
+				return errors.Wrap(err, "error getting ledger")
+			}
+			bin, err := ledgerCloseMeta.MarshalBinary()
+			if err != nil {
+				return err
+			}
+			err = os.WriteFile(
+				filename,
+				bin,
+				0666,
+			)
+			if err != nil {
+				return err
+			}
+			continue
+		} else {
+			bin, err := os.ReadFile(filename)
+			if err != nil {
+				return err
+			}
+			if _, err = decoder.DecodeBytes(&ledgerCloseMeta, bin); err != nil {
+				return err
+			}
 		}
-		if _, err = decoder.DecodeBytes(&ledgerCloseMeta, bin); err != nil {
-			return err
-		}
+
 		//
 		//var err error
-		//ledgerCloseMeta, err = s.ledgerBackend.GetLedger(s.ctx, cur)
-		//if err != nil {
-		//	return errors.Wrap(err, "error getting ledger")
-		//}
-		//bin, err := ledgerCloseMeta.MarshalBinary()
-		//if err != nil {
-		//	return err
-		//}
-		//err = os.WriteFile(
-		//	filename,
-		//	bin,
-		//	0666,
-		//)
-		//if err != nil {
-		//	return err
-		//}
+
 		if err = s.runner.ApplyProcessorsOnLedger(processors, ledgerCloseMeta); err != nil {
 			return err
 		}
@@ -749,6 +758,9 @@ func (h reingestHistoryRangeState) ingestRange(s *system, fromLedger, toLedger u
 	}
 	log.WithField("current_state", h).WithField("duration", time.Since(startTime)).Info("processors run duration")
 
+	if h.export {
+		return nil
+	}
 	startTime = time.Now()
 
 	err = func() error {
@@ -843,13 +855,14 @@ func (h reingestHistoryRangeState) run(s *system) (transition, error) {
 		h.fromLedger = 2
 	}
 
-	var startTime time.Time
+	startTime := time.Now()
 
 	if true || h.force {
-		//if t, err := h.prepareRange(s); err != nil {
-		//	return t, err
-		//}
-		startTime = time.Now()
+		if h.export {
+			if t, err := h.prepareRange(s); err != nil {
+				return t, err
+			}
+		}
 
 		//// acquire distributed lock so no one else can perform ingestion operations.
 		//if _, err := s.historyQ.GetLastLedgerIngest(s.ctx); err != nil {
@@ -874,7 +887,6 @@ func (h reingestHistoryRangeState) run(s *system) (transition, error) {
 		if t, err = h.prepareRange(s); err != nil {
 			return t, err
 		}
-		startTime = time.Now()
 
 		for cur := h.fromLedger; cur <= h.toLedger; cur++ {
 			err = func(ledger uint32) error {

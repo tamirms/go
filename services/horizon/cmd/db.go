@@ -242,6 +242,7 @@ var dbReingestCmd = &cobra.Command{
 }
 
 var (
+	export              bool
 	reingestForce       bool
 	parallelWorkers     uint
 	parallelJobSize     uint32
@@ -259,6 +260,13 @@ func ingestRangeCmdOpts() support.ConfigOptions {
 			FlagDefault: false,
 			Usage: "[optional] if this flag is set, horizon will be blocked " +
 				"from ingesting until the reingestion command completes (incompatible with --parallel-workers > 1)",
+		},
+		{
+			Name:        "export",
+			ConfigKey:   &export,
+			OptType:     types.Bool,
+			Required:    false,
+			FlagDefault: false,
 		},
 		{
 			Name:        "parallel-workers",
@@ -329,6 +337,7 @@ var dbReingestRangeCmd = &cobra.Command{
 		return runDBReingestRange(
 			[]history.LedgerRange{{StartSequence: argsUInt32[0], EndSequence: argsUInt32[1]}},
 			reingestForce,
+			export,
 			parallelWorkers,
 			*config,
 		)
@@ -389,11 +398,11 @@ var dbFillGapsCmd = &cobra.Command{
 			hlog.Infof("found gaps %v", gaps)
 		}
 
-		return runDBReingestRange(gaps, reingestForce, parallelWorkers, *config)
+		return runDBReingestRange(gaps, reingestForce, export, parallelWorkers, *config)
 	},
 }
 
-func runDBReingestRange(ledgerRanges []history.LedgerRange, reingestForce bool, parallelWorkers uint, config horizon.Config) error {
+func runDBReingestRange(ledgerRanges []history.LedgerRange, reingestForce bool, export bool, parallelWorkers uint, config horizon.Config) error {
 	var err error
 
 	if reingestForce && parallelWorkers > 1 {
@@ -454,7 +463,7 @@ func runDBReingestRange(ledgerRanges []history.LedgerRange, reingestForce bool, 
 	}
 	defer system.Shutdown()
 
-	err = system.ReingestRange(ledgerRanges, reingestForce, false)
+	err = system.ReingestRange(ledgerRanges, reingestForce, false, export)
 	if err != nil {
 		if _, ok := errors.Cause(err).(ingest.ErrReingestRangeConflict); ok {
 			return fmt.Errorf(`The range you have provided overlaps with Horizon's most recently ingested ledger.
