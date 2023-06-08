@@ -101,7 +101,7 @@ func calculateParallelLedgerBatchSize(rangeSize uint32, batchSizeSuggestion uint
 	if batchSize == 0 || rangeSize/batchSize < uint32(workerCount) {
 		// let's try to make use of all the workers
 		batchSize = rangeSize / uint32(workerCount)
-		fmt.Println("make use of all workers", batchSize)
+		fmt.Println("batch size:", batchSize)
 		return batchSize
 	}
 	// Use a minimum batch size to make it worth it in terms of overhead
@@ -109,8 +109,10 @@ func calculateParallelLedgerBatchSize(rangeSize uint32, batchSizeSuggestion uint
 		batchSize = minBatchSize
 	}
 
-	// Also, round the batch size to the closest, lower or equal 64 multiple
-	return (batchSize / historyCheckpointLedgerInterval) * historyCheckpointLedgerInterval
+	fmt.Println("batch size:", batchSize)
+	return batchSize
+	//// Also, round the batch size to the closest, lower or equal 64 multiple
+	//return (batchSize / historyCheckpointLedgerInterval) * historyCheckpointLedgerInterval
 }
 
 func totalRangeSize(ledgerRanges []history.LedgerRange) uint32 {
