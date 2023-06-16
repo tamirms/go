@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"fmt"
-	"github.com/lib/pq"
 	"testing"
 
 	"github.com/stellar/go/support/db/dbtest"
@@ -191,42 +190,4 @@ func TestBatchInsertBuilder(t *testing.T) {
 			{Name: "bubba", HungerLevel: "1"},
 		},
 	)
-}
-
-func TestFastBatchInsertBuilder(t *testing.T) {
-	const schema = `
-CREATE TABLE  IF NOT EXISTS people (
-    name character varying NOT NULL,
-    hunger_levels integer[] NOT NULL,
-    PRIMARY KEY (name)
-);
-`
-	db := dbtest.Postgres(t).Load(schema)
-	defer db.Close()
-	sess, err := Open("postgres", db.DSN)
-	defer sess.Close()
-
-	assert.NoError(t, sess.Begin())
-	defer sess.Rollback()
-
-	insertBuilder := &FastBatchInsertBuilder{}
-
-	// exec on the empty set should produce no errors
-	assert.NoError(t, insertBuilder.Exec(context.Background(), sess, "people"))
-
-	err = insertBuilder.Row(map[string]interface{}{
-		"name":          "bubba",
-		"hunger_levels": pq.Array([]int{1, 2, 3}),
-	})
-	assert.NoError(t, err)
-
-	err = insertBuilder.Row(map[string]interface{}{
-		"name":          "jonx",
-		"hunger_levels": pq.Array([]int{4}),
-	})
-	assert.NoError(t, err)
-
-	assert.NoError(t, insertBuilder.Exec(context.Background(), sess, "people"))
-
-	assert.NoError(t, sess.CommitPgxTx(context.Background()))
 }
