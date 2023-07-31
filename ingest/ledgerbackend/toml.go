@@ -325,7 +325,7 @@ type CaptiveCoreTomlParams struct {
 	Strict bool
 	// If true, specifies that captive core should be invoked with on-disk rather than in-memory option for ledger state
 	UseDB bool
-	// the path to the core binary, used to introspect core at runtie, determine some toml capabilities
+	// the path to the core binary, used to introspect core at runtime, determine some toml capabilities
 	CoreBinaryPath string
 	// Enforce EnableSorobanDiagnosticEvents when not disabled explicitly
 	EnforceSorobanDiagnosticEvents bool
@@ -426,34 +426,54 @@ func (c *CaptiveCoreToml) CatchupToml() (*CaptiveCoreToml, error) {
 	return offline, nil
 }
 
-func (c *CaptiveCoreToml) checkCoreVersion(coreBinaryPath string) bool {
-	if coreBinaryPath == "" {
+// coreVersion helper struct identify a core version and provides the
+// utilities to compare the version ( i.e. minor + major pair ) to a predefined
+// version.
+type coreVersion struct {
+	major int
+	minor int
+}
+
+// IsEqualOrAbove compares the core version to a version specific. If unable
+// to make the decision, the result is always "false", leaning toward the
+// common denominator.
+func (c *coreVersion) IsEqualOrAbove(major, minor int) bool {
+	if c.major == 0 && c.minor == 0 {
 		return false
+	}
+	return (c.major == major && c.minor >= minor) || (c.major > major)
+}
+
+func (c *CaptiveCoreToml) checkCoreVersion(coreBinaryPath string) coreVersion {
+	if coreBinaryPath == "" {
+		return coreVersion{}
 	}
 
 	versionRaw, err := exec.Command(coreBinaryPath, "version").Output()
 	if err != nil {
-		return false
+		return coreVersion{}
 	}
 
 	re := regexp.MustCompile(`\D*(\d*)\.(\d*).*`)
 	versionStr := re.FindStringSubmatch(string(versionRaw))
 	if err != nil || len(versionStr) != 3 {
-		return false
+		return coreVersion{}
 	}
 
 	var version [2]int
 	for i := 1; i < len(versionStr); i++ {
 		val, err := strconv.Atoi((versionStr[i]))
 		if err != nil {
-			return false
+			return coreVersion{}
 		}
 
 		version[i-1] = val
 	}
 
-	// Supports version 19.6 and above
-	return version[0] > 19 || (version[0] == 19 && version[1] >= 6)
+	return coreVersion{
+		major: version[0],
+		minor: version[1],
+	}
 }
 
 func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {
@@ -461,7 +481,9 @@ func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {
 		c.Database = "sqlite3://stellar.db"
 	}
 
-	if def := c.tree.Has("EXPERIMENTAL_BUCKETLIST_DB"); !def && params.UseDB && c.checkCoreVersion(params.CoreBinaryPath) {
+	coreVersion := c.checkCoreVersion(params.CoreBinaryPath)
+	// Supports version 19.6 and above
+	if def := c.tree.Has("EXPERIMENTAL_BUCKETLIST_DB"); !def && params.UseDB && coreVersion.IsEqualOrAbove(19, 6) {
 		c.UseBucketListDB = true
 	}
 
@@ -502,7 +524,9 @@ func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {
 			}
 		}
 	}
-	if params.EnforceSorobanDiagnosticEvents {
+
+	// starting version 20, we have dignostics events.
+	if params.EnforceSorobanDiagnosticEvents && coreVersion.IsEqualOrAbove(20, 0) {
 		if c.EnableSorobanDiagnosticEvents == nil {
 			// We are generating the file from scratch or the user didn't explicitly oppose to diagnostic events in the config file.
 			// Enforce it.
