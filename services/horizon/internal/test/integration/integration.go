@@ -467,16 +467,25 @@ func (i *Test) StartHorizon() error {
 	return nil
 }
 
+const maxWaitForCoreStartup = 30 * time.Second
+const maxWaitForCoreUpgrade = 5 * time.Second
+const coreStartupPingInterval = time.Second
+
 // Wait for core to be up and manually close the first ledger
 func (i *Test) waitForCore() {
 	i.t.Log("Waiting for core to be up...")
-	for t := 30 * time.Second; t >= 0; t -= time.Second {
+	startTime := time.Now()
+	for time.Since(startTime) < maxWaitForCoreStartup {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		infoTime := time.Now()
 		_, err := i.coreClient.Info(ctx)
 		cancel()
 		if err != nil {
 			i.t.Logf("could not obtain info response: %v", err)
-			time.Sleep(time.Second)
+			// sleep up to a second between consecutive calls.
+			if durationSince := time.Since(infoTime); durationSince < coreStartupPingInterval {
+				time.Sleep(coreStartupPingInterval - durationSince)
+			}
 			continue
 		}
 		break
@@ -484,19 +493,24 @@ func (i *Test) waitForCore() {
 
 	i.UpgradeProtocol(i.config.ProtocolVersion)
 
-	for t := 0; t < 5; t++ {
+	startTime = time.Now()
+	for time.Since(startTime) < maxWaitForCoreUpgrade {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		infoTime := time.Now()
 		info, err := i.coreClient.Info(ctx)
 		cancel()
 		if err != nil || !info.IsSynced() {
 			i.t.Logf("Core is still not synced: %v %v", err, info)
-			time.Sleep(time.Second)
+			// sleep up to a second between consecutive calls.
+			if durationSince := time.Since(infoTime); durationSince < coreStartupPingInterval {
+				time.Sleep(coreStartupPingInterval - durationSince)
+			}
 			continue
 		}
 		i.t.Log("Core is up.")
 		return
 	}
-	i.t.Fatal("Core could not sync after 30s")
+	i.t.Fatalf("Core could not sync after %v + %v", maxWaitForCoreStartup, maxWaitForCoreUpgrade)
 }
 
 const sorobanRPCInitTime = 90 * time.Second
