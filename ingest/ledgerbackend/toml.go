@@ -505,9 +505,9 @@ func (c *CaptiveCoreToml) checkCoreVersion(coreBinaryPath string) coreVersion {
 	}
 }
 
-const MIN_EXP_BUCKET_LIST_MAJOR = 19
-const MIN_EXP_BUCKET_LIST_MINOR = 6
-const MIN_SOROBAN_PROTOCOL_VERSION_SUPPORT = 20
+const MinimalBucketListDBCoreSupportVersionMajor = 19
+const MinimalBucketListDBCoreSupportVersionMinor = 6
+const MinimalSorobanProtocolSupport = 20
 
 func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {
 	if params.UseDB && !c.tree.Has("DATABASE") {
@@ -515,9 +515,11 @@ func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {
 	}
 
 	coreVersion := c.checkCoreVersion(params.CoreBinaryPath)
-	// Supports version 19.6 and above
-	if def := c.tree.Has("EXPERIMENTAL_BUCKETLIST_DB"); !def && params.UseDB && coreVersion.IsEqualOrAbove(MIN_EXP_BUCKET_LIST_MAJOR, MIN_EXP_BUCKET_LIST_MINOR) {
-		c.UseBucketListDB = true
+	if def := c.tree.Has("EXPERIMENTAL_BUCKETLIST_DB"); !def && params.UseDB {
+		// Supports version 19.6 and above
+		if coreVersion.IsEqualOrAbove(MinimalBucketListDBCoreSupportVersionMajor, MinimalBucketListDBCoreSupportVersionMinor) {
+			c.UseBucketListDB = true
+		}
 	}
 
 	if c.UseBucketListDB && !c.tree.Has("EXPERIMENTAL_BUCKETLIST_DB_INDEX_PAGE_SIZE_EXPONENT") {
@@ -559,7 +561,7 @@ func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {
 	}
 
 	// starting version 20, we have dignostics events.
-	if params.EnforceSorobanDiagnosticEvents && coreVersion.IsProtocolVersionEqualOrAbove(MIN_SOROBAN_PROTOCOL_VERSION_SUPPORT) {
+	if params.EnforceSorobanDiagnosticEvents && coreVersion.IsProtocolVersionEqualOrAbove(MinimalSorobanProtocolSupport) {
 		if c.EnableSorobanDiagnosticEvents == nil {
 			// We are generating the file from scratch or the user didn't explicitly oppose to diagnostic events in the config file.
 			// Enforce it.
