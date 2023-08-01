@@ -54,6 +54,7 @@ var (
 
 type Config struct {
 	ProtocolVersion       uint32
+	EnableSorobanRPC      bool
 	SkipContainerCreation bool
 	CoreDockerImage       string
 	SorobanRPCDockerImage string
@@ -144,7 +145,7 @@ func NewTest(t *testing.T, config Config) *Test {
 	i.prepareShutdownHandlers()
 	i.coreClient = &stellarcore.Client{URL: "http://localhost:" + strconv.Itoa(stellarCorePort)}
 	i.waitForCore()
-	if RunWithSorobanRPC {
+	if RunWithSorobanRPC && i.config.EnableSorobanRPC {
 		i.runComposeCommand("up", "--detach", "--quiet-pull", "--no-color", "soroban-rpc")
 		i.waitForSorobanRPC()
 	}

@@ -107,7 +107,8 @@ func TestContractMintToContract(t *testing.T) {
 	}
 
 	itest := integration.NewTest(t, integration.Config{
-		ProtocolVersion: 20,
+		ProtocolVersion:  20,
+		EnableSorobanRPC: true,
 	})
 
 	issuer := itest.Master().Address()
@@ -185,7 +186,8 @@ func TestContractTransferBetweenAccounts(t *testing.T) {
 	}
 
 	itest := integration.NewTest(t, integration.Config{
-		ProtocolVersion: 20,
+		ProtocolVersion:  20,
+		EnableSorobanRPC: true,
 	})
 
 	issuer := itest.Master().Address()
@@ -256,7 +258,8 @@ func TestContractTransferBetweenAccountAndContract(t *testing.T) {
 	}
 
 	itest := integration.NewTest(t, integration.Config{
-		ProtocolVersion: 20,
+		ProtocolVersion:  20,
+		EnableSorobanRPC: true,
 	})
 
 	issuer := itest.Master().Address()
@@ -371,7 +374,8 @@ func TestContractTransferBetweenContracts(t *testing.T) {
 	}
 
 	itest := integration.NewTest(t, integration.Config{
-		ProtocolVersion: 20,
+		ProtocolVersion:  20,
+		EnableSorobanRPC: true,
 	})
 
 	issuer := itest.Master().Address()
@@ -451,7 +455,8 @@ func TestContractBurnFromAccount(t *testing.T) {
 	}
 
 	itest := integration.NewTest(t, integration.Config{
-		ProtocolVersion: 20,
+		ProtocolVersion:  20,
+		EnableSorobanRPC: true,
 	})
 
 	issuer := itest.Master().Address()
@@ -522,7 +527,8 @@ func TestContractBurnFromContract(t *testing.T) {
 	}
 
 	itest := integration.NewTest(t, integration.Config{
-		ProtocolVersion: 20,
+		ProtocolVersion:  20,
+		EnableSorobanRPC: true,
 	})
 
 	issuer := itest.Master().Address()
@@ -588,7 +594,8 @@ func TestContractClawbackFromAccount(t *testing.T) {
 	}
 
 	itest := integration.NewTest(t, integration.Config{
-		ProtocolVersion: 20,
+		ProtocolVersion:  20,
+		EnableSorobanRPC: true,
 	})
 
 	// Give the master account the revocable flag (needed to set the clawback flag)
@@ -662,7 +669,8 @@ func TestContractClawbackFromContract(t *testing.T) {
 	}
 
 	itest := integration.NewTest(t, integration.Config{
-		ProtocolVersion: 20,
+		ProtocolVersion:  20,
+		EnableSorobanRPC: true,
 	})
 
 	// Give the master account the revocable flag (needed to set the clawback flag)
