@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/stellar/go/ingest/ledgerbackend"
 	"github.com/stellar/go/services/horizon/internal/ingest"
 
 	sdk "github.com/stellar/go/clients/horizonclient"
@@ -165,7 +166,11 @@ func (i *Test) configureCaptiveCore() {
 	if RunWithCaptiveCore {
 		composePath := findDockerComposePath()
 		i.coreConfig.binaryPath = os.Getenv("HORIZON_INTEGRATION_TESTS_CAPTIVE_CORE_BIN")
-		i.coreConfig.configPath = filepath.Join(composePath, "captive-core-integration-tests.cfg")
+		coreConfigFile := "captive-core-classic-integration-tests.cfg"
+		if i.config.ProtocolVersion >= ledgerbackend.MinimalSorobanProtocolSupport {
+			coreConfigFile = "captive-core-integration-tests.cfg"
+		}
+		i.coreConfig.configPath = filepath.Join(composePath, coreConfigFile)
 		i.coreConfig.storagePath = i.CurrentTest().TempDir()
 		if RunWithCaptiveCoreUseDB {
 			i.coreConfig.useDB = true
