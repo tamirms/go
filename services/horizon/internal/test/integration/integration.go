@@ -498,11 +498,14 @@ func (i *Test) waitForCore() {
 	i.t.Fatal("Core could not sync after 30s")
 }
 
+const sorobanRPCInitTime = 90 * time.Second
+
 // Wait for SorobanRPC to be up
 func (i *Test) waitForSorobanRPC() {
 	i.t.Log("Waiting for Soroban RPC to be up...")
 
-	for t := 30 * time.Second; t >= 0; t -= time.Second {
+	start := time.Now()
+	for t := sorobanRPCInitTime; t >= 0; t -= time.Second {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		// TODO: soroban-tools should be exporting a proper Go client
 		ch := jhttp.NewChannel("http://localhost:"+strconv.Itoa(sorobanRPCPort), nil)
@@ -518,7 +521,7 @@ func (i *Test) waitForSorobanRPC() {
 		return
 	}
 
-	i.t.Fatal("SorobanRPC unhealthy after 30s")
+	i.t.Fatalf("SorobanRPC unhealthy after %v", time.Since(start))
 }
 
 type RPCSimulateHostFunctionResult struct {
