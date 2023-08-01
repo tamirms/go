@@ -109,14 +109,14 @@ jobs:
         id: calculate_source_hash
         run: |
           combined_hash=$(echo "horizon-hash-${{ hashFiles('./horizon') }}-${{ hashFiles('./clients/horizonclient/**') }}-${{ hashFiles('./protocols/horizon/**') }}-${{ hashFiles('./txnbuild/**') }}-${{ hashFiles('./ingest/**') }}-${{ hashFiles('./xdr/**') }}-${{ hashFiles('./services/horizon/internal/integration/**') }}-${{ env.PROTOCOL_20_CORE_DOCKER_IMG }}-${{ env.PROTOCOL_19_CORE_DOCKER_IMG }}" | sha256sum | cut -d ' ' -f 1)
-          echo "::set-output name=combined_hash::$combined_hash"
+          echo "COMBINED_SOURCE_HASH=$combined_hash" >> "$GITHUB_ENV"
 
       - name: Save Horizon binary and integration tests source hash to cache
         id: horizon_binary_tests_hash
         uses: actions/cache@v3
         with:
           path: ./empty
-          key: ${{ steps.calculate_source_hash.outputs.combined_hash }}
+          key: ${{ env.COMBINED_SOURCE_HASH }}
 
       - if: ${{ steps.horizon_binary_tests_hash.outputs.cache-hit != 'true' }}
         run: go test -race -timeout 45m -v ./services/horizon/internal/integration/...
