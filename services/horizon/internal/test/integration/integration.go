@@ -505,7 +505,7 @@ func (i *Test) waitForSorobanRPC() {
 	i.t.Log("Waiting for Soroban RPC to be up...")
 
 	start := time.Now()
-	for t := sorobanRPCInitTime; t >= 0; t -= time.Second {
+	for time.Since(start) < sorobanRPCInitTime {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		// TODO: soroban-tools should be exporting a proper Go client
 		ch := jhttp.NewChannel("http://localhost:"+strconv.Itoa(sorobanRPCPort), nil)
