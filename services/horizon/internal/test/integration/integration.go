@@ -500,6 +500,7 @@ func (i *Test) waitForCore() {
 }
 
 const sorobanRPCInitTime = 90 * time.Second
+const sorobanRPCHealthCheckInterval = time.Second
 
 // Wait for SorobanRPC to be up
 func (i *Test) waitForSorobanRPC() {
@@ -507,15 +508,19 @@ func (i *Test) waitForSorobanRPC() {
 
 	start := time.Now()
 	for time.Since(start) < sorobanRPCInitTime {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), sorobanRPCHealthCheckInterval)
 		// TODO: soroban-tools should be exporting a proper Go client
 		ch := jhttp.NewChannel("http://localhost:"+strconv.Itoa(sorobanRPCPort), nil)
 		sorobanRPCClient := jrpc2.NewClient(ch, nil)
+		callTime := time.Now()
 		_, err := sorobanRPCClient.Call(ctx, "getHealth", nil)
 		cancel()
 		if err != nil {
 			i.t.Logf("SorobanRPC is unhealthy: %v", err)
-			time.Sleep(time.Second)
+			// sleep up to a second between consecutive calls.
+			if durationSince := time.Since(callTime); durationSince < sorobanRPCHealthCheckInterval {
+				time.Sleep(sorobanRPCHealthCheckInterval - durationSince)
+			}
 			continue
 		}
 		i.t.Log("SorobanRPC is up.")

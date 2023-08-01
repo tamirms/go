@@ -34,6 +34,7 @@ func TestContractMintToAccount(t *testing.T) {
 	itest := integration.NewTest(t, integration.Config{
 		ProtocolVersion:    20,
 		HorizonEnvironment: map[string]string{"INGEST_DISABLE_STATE_VERIFICATION": "true", "CONNECTION_TIMEOUT": "360000"},
+		EnableSorobanRPC:   true,
 	})
 
 	issuer := itest.Master().Address()
