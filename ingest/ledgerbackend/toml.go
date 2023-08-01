@@ -430,8 +430,9 @@ func (c *CaptiveCoreToml) CatchupToml() (*CaptiveCoreToml, error) {
 // utilities to compare the version ( i.e. minor + major pair ) to a predefined
 // version.
 type coreVersion struct {
-	major int
-	minor int
+	major                 int
+	minor                 int
+	ledgerProtocolVersion int
 }
 
 // IsEqualOrAbove compares the core version to a version specific. If unable
@@ -444,35 +445,63 @@ func (c *coreVersion) IsEqualOrAbove(major, minor int) bool {
 	return (c.major == major && c.minor >= minor) || (c.major > major)
 }
 
+// IsEqualOrAbove compares the core version to a version specific. If unable
+// to make the decision, the result is always "false", leaning toward the
+// common denominator.
+func (c *coreVersion) IsProtocolVersionEqualOrAbove(protocolVer int) bool {
+	if c.ledgerProtocolVersion == 0 {
+		return false
+	}
+	return c.ledgerProtocolVersion >= protocolVer
+}
+
 func (c *CaptiveCoreToml) checkCoreVersion(coreBinaryPath string) coreVersion {
 	if coreBinaryPath == "" {
 		return coreVersion{}
 	}
 
-	versionRaw, err := exec.Command(coreBinaryPath, "version").Output()
+	versionBytes, err := exec.Command(coreBinaryPath, "version").Output()
 	if err != nil {
 		return coreVersion{}
 	}
 
-	re := regexp.MustCompile(`\D*(\d*)\.(\d*).*`)
-	versionStr := re.FindStringSubmatch(string(versionRaw))
-	if err != nil || len(versionStr) != 3 {
-		return coreVersion{}
-	}
+	// starting soroban, we want to use only the first row for the verison.
+	versionRows := strings.Split(string(versionBytes), "\n")
+	versionRaw := versionRows[0]
 
 	var version [2]int
-	for i := 1; i < len(versionStr); i++ {
-		val, err := strconv.Atoi((versionStr[i]))
-		if err != nil {
-			return coreVersion{}
-		}
 
-		version[i-1] = val
+	re := regexp.MustCompile(`\D*(\d*)\.(\d*).*`)
+	versionStr := re.FindStringSubmatch(string(versionRaw))
+	if err == nil && len(versionStr) == 3 {
+		for i := 1; i < len(versionStr); i++ {
+			val, err := strconv.Atoi((versionStr[i]))
+			if err != nil {
+				break
+			}
+			version[i-1] = val
+		}
+	}
+
+	re = regexp.MustCompile(`^\s*ledger protocol version: (\d*)`)
+	var ledgerProtocol int
+	var ledgerProtocolStrings []string
+	for _, line := range versionRows {
+		ledgerProtocolStrings = re.FindStringSubmatch(line)
+		if len(ledgerProtocolStrings) > 0 {
+			break
+		}
+	}
+	if len(ledgerProtocolStrings) == 2 {
+		if val, err := strconv.Atoi(ledgerProtocolStrings[1]); err == nil {
+			ledgerProtocol = val
+		}
 	}
 
 	return coreVersion{
-		major: version[0],
-		minor: version[1],
+		major:                 version[0],
+		minor:                 version[1],
+		ledgerProtocolVersion: ledgerProtocol,
 	}
 }
 
@@ -526,7 +555,7 @@ func (c *CaptiveCoreToml) setDefaults(params CaptiveCoreTomlParams) {
 	}
 
 	// starting version 20, we have dignostics events.
-	if params.EnforceSorobanDiagnosticEvents && coreVersion.IsEqualOrAbove(20, 0) {
+	if params.EnforceSorobanDiagnosticEvents && coreVersion.IsProtocolVersionEqualOrAbove(20) {
 		if c.EnableSorobanDiagnosticEvents == nil {
 			// We are generating the file from scratch or the user didn't explicitly oppose to diagnostic events in the config file.
 			// Enforce it.
