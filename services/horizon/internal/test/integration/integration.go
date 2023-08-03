@@ -241,8 +241,10 @@ func (i *Test) runComposeCommand(args ...string) {
 	}
 	i.t.Log("Running", cmd.Env, cmd.Args)
 	out, innerErr := cmd.Output()
-	if exitErr, ok := innerErr.(*exec.ExitError); ok {
+	if len(out) > 0 {
 		fmt.Printf("stdout:\n%s\n", string(out))
+	}
+	if exitErr, ok := innerErr.(*exec.ExitError); ok {
 		fmt.Printf("stderr:\n%s\n", string(exitErr.Stderr))
 	}
 
@@ -263,6 +265,7 @@ func (i *Test) prepareShutdownHandlers() {
 			i.runComposeCommand("rm", "-fvs", "core")
 			i.runComposeCommand("rm", "-fvs", "core-postgres")
 			if os.Getenv("HORIZON_INTEGRATION_TESTS_ENABLE_SOROBAN_RPC") != "" {
+				i.runComposeCommand("logs", "soroban-rpc")
 				i.runComposeCommand("rm", "-fvs", "soroban-rpc")
 			}
 		},
