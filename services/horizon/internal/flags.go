@@ -766,7 +766,7 @@ func createCaptiveCoreConfigFromNetwork(config *Config) error {
 
 // createCaptiveCoreConfigFromParameters generates the Captive Core configuration.
 // validates the configuration settings, sets necessary values, and loads the Captive Core TOML file.
-func createCaptiveCoreConfigFromParameters(config *Config) error {
+func createCaptiveCoreConfigFromParameters(config *Config, options ApplyOptions) error {
 
 	if config.NetworkPassphrase == "" {
 		return fmt.Errorf("%s must be set", NetworkPassphraseFlagName)
@@ -778,6 +778,9 @@ func createCaptiveCoreConfigFromParameters(config *Config) error {
 
 	if config.CaptiveCoreConfigPath != "" {
 		return loadCaptiveCoreTomlFromFile(config)
+	} else if options.RequireCaptiveCoreConfig {
+		return fmt.Errorf(
+			"invalid config: captive core requires that --%s is set", CaptiveCoreConfigPathName)
 	} else {
 		config.CaptiveCoreTomlParams.CoreBinaryPath = config.CaptiveCoreBinaryPath
 		config.CaptiveCoreTomlParams.HistoryArchiveURLs = config.HistoryArchiveURLs
@@ -794,7 +797,7 @@ func createCaptiveCoreConfigFromParameters(config *Config) error {
 }
 
 // setCaptiveCoreConfiguration prepares configuration for the Captive Core
-func setCaptiveCoreConfiguration(config *Config) error {
+func setCaptiveCoreConfiguration(config *Config, options ApplyOptions) error {
 	stdLog.Println("Preparing captive core...")
 
 	// If the user didn't specify a Stellar Core binary, we can check the
@@ -812,7 +815,7 @@ func setCaptiveCoreConfiguration(config *Config) error {
 			return err
 		}
 	} else {
-		err := createCaptiveCoreConfigFromParameters(config)
+		err := createCaptiveCoreConfigFromParameters(config, options)
 		if err != nil {
 			return err
 		}
@@ -862,7 +865,7 @@ func ApplyFlags(config *Config, flags support.ConfigOptions, options ApplyOption
 		}
 
 		if config.EnableCaptiveCoreIngestion {
-			err := setCaptiveCoreConfiguration(config)
+			err := setCaptiveCoreConfiguration(config, options)
 			if err != nil {
 				return errors.Wrap(err, "error generating captive core configuration")
 			}
