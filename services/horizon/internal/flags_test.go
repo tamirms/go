@@ -128,7 +128,8 @@ func Test_createCaptiveCoreConfig(t *testing.T) {
 				NetworkPassphrase:  PubnetConf.NetworkPassphrase,
 				HistoryArchiveURLs: PubnetConf.HistoryArchiveURLs,
 			},
-			errStr: fmt.Sprintf("invalid config: captive core requires that --captive-core-config-path is set"),
+			errStr: fmt.Sprintf("invalid config: captive core requires that --%s is set",
+				CaptiveCoreConfigPathName),
 		},
 		{
 			name:                     "no network specified; captive-core-config-path invalid file",
@@ -138,8 +139,8 @@ func Test_createCaptiveCoreConfig(t *testing.T) {
 				HistoryArchiveURLs:    PubnetConf.HistoryArchiveURLs,
 				CaptiveCoreConfigPath: "xyz.cfg",
 			},
-			errStr: fmt.Sprintf("invalid captive core toml file: could not load toml path:" +
-				" open xyz.cfg: no such file or directory"),
+			errStr: "invalid captive core toml file: could not load toml path:" +
+				" open xyz.cfg: no such file or directory",
 		},
 		{
 			name:                     "no network specified; captive-core-config-path incorrect config",
@@ -149,9 +150,9 @@ func Test_createCaptiveCoreConfig(t *testing.T) {
 				HistoryArchiveURLs:    PubnetConf.HistoryArchiveURLs,
 				CaptiveCoreConfigPath: "configs/captive-core-testnet.cfg",
 			},
-			errStr: fmt.Sprintf("invalid captive core toml file: invalid captive core toml: " +
-				"NETWORK_PASSPHRASE in captive core config file: Test SDF Network ; September 2015 " +
-				"does not match Horizon network-passphrase flag: Public Global Stellar Network ; September 2015"),
+			errStr: fmt.Sprintf("invalid captive core toml file: invalid captive core toml: "+
+				"NETWORK_PASSPHRASE in captive core config file: %s does not match Horizon "+
+				"network-passphrase flag: %s", TestnetConf.NetworkPassphrase, PubnetConf.NetworkPassphrase),
 		},
 		{
 			name:                     "no network specified; captive-core-config not required",
