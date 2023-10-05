@@ -72,7 +72,8 @@ func GetChangesFromLedgerEntryChanges(ledgerEntryChanges xdr.LedgerEntryChanges)
 		}
 	}
 
-	return sortChanges(changes)
+	sortChanges(changes)
+	return changes
 }
 
 type sortableChanges struct {
@@ -118,9 +119,8 @@ func (s sortableChanges) Swap(i, j int) {
 // multiple changes with the same ledger key in a LedgerEntryChanges group,
 // but if that is the case, we fall back to the original ordering of the changes
 // by using a stable sorting algorithm.
-func sortChanges(changes []Change) []Change {
+func sortChanges(changes []Change) {
 	sort.Stable(newSortableChanges(changes))
-	return changes
 }
 
 // LedgerEntryChangeType returns type in terms of LedgerEntryChangeType.
