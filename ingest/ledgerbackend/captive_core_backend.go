@@ -111,6 +111,7 @@ type CaptiveStellarCore struct {
 
 	config            CaptiveCoreConfig
 	stellarCoreClient *stellarcore.Client
+	decoder           *xdr.BytesDecoder
 }
 
 // CaptiveCoreConfig contains all the parameters required to create a CaptiveStellarCore instance
@@ -207,6 +208,8 @@ func NewCaptive(config CaptiveCoreConfig) (*CaptiveStellarCore, error) {
 			URL: fmt.Sprintf("http://localhost:%d", config.Toml.HTTPPort),
 		}
 	}
+
+	c.decoder = xdr.NewBytesDecoder()
 
 	return c, nil
 }
@@ -480,6 +483,8 @@ func (c *CaptiveStellarCore) startPreparingRange(ctx context.Context, ledgerRang
 // Please note that using a BoundedRange, currently, requires a full-trust on
 // history archive. This issue is being fixed in Stellar-Core.
 func (c *CaptiveStellarCore) PrepareRange(ctx context.Context, ledgerRange Range) error {
+	return nil
+
 	if alreadyPrepared, err := c.startPreparingRange(ctx, ledgerRange); err != nil {
 		return errors.Wrap(err, "error starting prepare range")
 	} else if alreadyPrepared {
@@ -566,6 +571,16 @@ func (c *CaptiveStellarCore) isPrepared(ledgerRange Range) bool {
 //   - BoundedRange: After getting the last ledger in a range this method will
 //     also Close() the backend.
 func (c *CaptiveStellarCore) GetLedger(ctx context.Context, sequence uint32) (xdr.LedgerCloseMeta, error) {
+	var ledgerCloseMeta xdr.LedgerCloseMeta
+	bin, err := os.ReadFile(fmt.Sprintf("/Users/tamir/work/gopath/src/github.com/stellar/go/txmeta/%d", sequence))
+	if err != nil {
+		return ledgerCloseMeta, err
+	}
+	if _, err = c.decoder.DecodeBytes(&ledgerCloseMeta, bin); err != nil {
+		return ledgerCloseMeta, err
+	}
+	return ledgerCloseMeta, nil
+
 	c.stellarCoreLock.RLock()
 	defer c.stellarCoreLock.RUnlock()
 
