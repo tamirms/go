@@ -17,7 +17,7 @@ type OffersProcessor struct {
 	offersQ  history.QOffers
 	sequence uint32
 
-	cache              *ingest.ChangeCompactor
+	batchUpsertOffers  []history.Offer
 	insertBatchBuilder history.OffersBatchInsertBuilder
 }
 
@@ -32,7 +32,7 @@ func (p *OffersProcessor) Name() string {
 }
 
 func (p *OffersProcessor) reset() {
-	p.cache = ingest.NewChangeCompactor()
+	p.batchUpsertOffers = []history.Offer{}
 	p.insertBatchBuilder = p.offersQ.NewOffersBatchInsertBuilder()
 }
 
@@ -41,11 +41,28 @@ func (p *OffersProcessor) ProcessChange(ctx context.Context, change ingest.Chang
 		return nil
 	}
 
-	if err := p.cache.AddChange(change); err != nil {
-		return errors.Wrap(err, "error adding to ledgerCache")
+	switch {
+	case change.Pre == nil && change.Post != nil:
+		// Created
+		err := p.insertBatchBuilder.Add(p.ledgerEntryToRow(change.Post))
+		if err != nil {
+			return errors.New("Error adding to OffersBatchInsertBuilder")
+		}
+	case change.Pre != nil && change.Post != nil:
+		// Updated
+		row := p.ledgerEntryToRow(change.Post)
+		p.batchUpsertOffers = append(p.batchUpsertOffers, row)
+	case change.Pre != nil && change.Post == nil:
+		// Removed
+		row := p.ledgerEntryToRow(change.Pre)
+		row.Deleted = true
+		row.LastModifiedLedger = p.sequence
+		p.batchUpsertOffers = append(p.batchUpsertOffers, row)
+	default:
+		return errors.New("Invalid io.Change: change.Pre == nil && change.Post == nil")
 	}
 
-	if p.cache.Size() > maxBatchSize {
+	if p.insertBatchBuilder.Len()+len(p.batchUpsertOffers) > maxBatchSize {
 		if err := p.flushCache(ctx); err != nil {
 			return errors.Wrap(err, "error in Commit")
 		}
@@ -74,38 +91,13 @@ func (p *OffersProcessor) ledgerEntryToRow(entry *xdr.LedgerEntry) history.Offer
 func (p *OffersProcessor) flushCache(ctx context.Context) error {
 	defer p.reset()
 
-	var batchUpsertOffers []history.Offer
-	changes := p.cache.GetChanges()
-	for _, change := range changes {
-		switch {
-		case change.Pre == nil && change.Post != nil:
-			// Created
-			err := p.insertBatchBuilder.Add(p.ledgerEntryToRow(change.Post))
-			if err != nil {
-				return errors.New("Error adding to OffersBatchInsertBuilder")
-			}
-		case change.Pre != nil && change.Post != nil:
-			// Updated
-			row := p.ledgerEntryToRow(change.Post)
-			batchUpsertOffers = append(batchUpsertOffers, row)
-		case change.Pre != nil && change.Post == nil:
-			// Removed
-			row := p.ledgerEntryToRow(change.Pre)
-			row.Deleted = true
-			row.LastModifiedLedger = p.sequence
-			batchUpsertOffers = append(batchUpsertOffers, row)
-		default:
-			return errors.New("Invalid io.Change: change.Pre == nil && change.Post == nil")
-		}
-	}
-
 	err := p.insertBatchBuilder.Exec(ctx)
 	if err != nil {
 		return errors.New("Error executing OffersBatchInsertBuilder")
 	}
 
-	if len(batchUpsertOffers) > 0 {
-		err := p.offersQ.UpsertOffers(ctx, batchUpsertOffers)
+	if len(p.batchUpsertOffers) > 0 {
+		err := p.offersQ.UpsertOffers(ctx, p.batchUpsertOffers)
 		if err != nil {
 			return errors.Wrap(err, "errors in UpsertOffers")
 		}
