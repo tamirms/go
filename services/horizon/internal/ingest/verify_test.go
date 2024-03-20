@@ -283,6 +283,32 @@ func ttlForContractData(tt *test.T, gen randxdr.Generator, contractData xdr.Ledg
 	return ttl
 }
 
+func TestTruncateIngestStateTables(t *testing.T) {
+	tt := test.Start(t)
+	defer tt.Finish()
+	test.ResetHorizonDB(t, tt.HorizonDB)
+	q := &history.Q{&db.Session{DB: tt.HorizonDB}}
+
+	tt.Assert.NoError(q.BeginTx(tt.Ctx, &sql.TxOptions{}))
+	checkpointLedger := uint32(63)
+	changeProcessor := buildChangeProcessor(q, &ingest.StatsChangeProcessor{}, ledgerSource, checkpointLedger, "")
+	for _, change := range ingest.GetChangesFromLedgerEntryChanges(generateRandomLedgerEntries(tt)) {
+		tt.Assert.NoError(changeProcessor.ProcessChange(tt.Ctx, change))
+	}
+	tt.Assert.NoError(changeProcessor.Commit(tt.Ctx))
+	tt.Assert.NoError(q.Commit())
+
+	q.TruncateIngestStateTables(tt.Ctx)
+
+	tt.Assert.NoError(q.BeginTx(tt.Ctx, &sql.TxOptions{}))
+	changeProcessor = buildChangeProcessor(q, &ingest.StatsChangeProcessor{}, ledgerSource, checkpointLedger, "")
+	for _, change := range ingest.GetChangesFromLedgerEntryChanges(generateRandomLedgerEntries(tt)) {
+		tt.Assert.NoError(changeProcessor.ProcessChange(tt.Ctx, change))
+	}
+	tt.Assert.NoError(changeProcessor.Commit(tt.Ctx))
+	tt.Assert.NoError(q.Commit())
+}
+
 func TestStateVerifierLockBusy(t *testing.T) {
 	tt := test.Start(t)
 	defer tt.Finish()
@@ -294,19 +320,7 @@ func TestStateVerifierLockBusy(t *testing.T) {
 	checkpointLedger := uint32(63)
 	changeProcessor := buildChangeProcessor(q, &ingest.StatsChangeProcessor{}, ledgerSource, checkpointLedger, "")
 
-	gen := randxdr.NewGenerator()
-	var changes []xdr.LedgerEntryChange
-	for i := 0; i < 10; i++ {
-		changes = append(changes,
-			genLiquidityPool(tt, gen),
-			genClaimableBalance(tt, gen),
-			genOffer(tt, gen),
-			genTrustLine(tt, gen),
-			genAccount(tt, gen),
-			genAccountData(tt, gen),
-		)
-	}
-	for _, change := range ingest.GetChangesFromLedgerEntryChanges(changes) {
+	for _, change := range ingest.GetChangesFromLedgerEntryChanges(generateRandomLedgerEntries(tt)) {
 		tt.Assert.NoError(changeProcessor.ProcessChange(tt.Ctx, change))
 	}
 	tt.Assert.NoError(changeProcessor.Commit(tt.Ctx))
@@ -353,25 +367,8 @@ func TestStateVerifier(t *testing.T) {
 	changeProcessor := buildChangeProcessor(q, &ingest.StatsChangeProcessor{}, ledgerSource, checkpointLedger, "")
 	mockChangeReader := &ingest.MockChangeReader{}
 
-	gen := randxdr.NewGenerator()
-	var changes []xdr.LedgerEntryChange
-	for i := 0; i < 100; i++ {
-		changes = append(changes,
-			genLiquidityPool(tt, gen),
-			genClaimableBalance(tt, gen),
-			genOffer(tt, gen),
-			genTrustLine(tt, gen),
-			genAccount(tt, gen),
-			genAccountData(tt, gen),
-			genContractCode(tt, gen),
-			genConfigSetting(tt, gen),
-			genTTL(tt, gen),
-		)
-		changes = append(changes, genAssetContractMetadata(tt, gen)...)
-	}
-
 	coverage := map[xdr.LedgerEntryType]int{}
-	for _, change := range ingest.GetChangesFromLedgerEntryChanges(changes) {
+	for _, change := range ingest.GetChangesFromLedgerEntryChanges(generateRandomLedgerEntries(tt)) {
 		mockChangeReader.On("Read").Return(change, nil).Once()
 		tt.Assert.NoError(changeProcessor.ProcessChange(tt.Ctx, change))
 		coverage[change.Type]++
@@ -401,4 +398,24 @@ func TestStateVerifier(t *testing.T) {
 	tt.Assert.NoError(sys.verifyState(false))
 	mockChangeReader.AssertExpectations(t)
 	mockHistoryAdapter.AssertExpectations(t)
+}
+
+func generateRandomLedgerEntries(tt *test.T) []xdr.LedgerEntryChange {
+	gen := randxdr.NewGenerator()
+	var changes []xdr.LedgerEntryChange
+	for i := 0; i < 100; i++ {
+		changes = append(changes,
+			genLiquidityPool(tt, gen),
+			genClaimableBalance(tt, gen),
+			genOffer(tt, gen),
+			genTrustLine(tt, gen),
+			genAccount(tt, gen),
+			genAccountData(tt, gen),
+			genContractCode(tt, gen),
+			genConfigSetting(tt, gen),
+			genTTL(tt, gen),
+		)
+		changes = append(changes, genAssetContractMetadata(tt, gen)...)
+	}
+	return changes
 }
