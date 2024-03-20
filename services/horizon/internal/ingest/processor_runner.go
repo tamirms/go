@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/stellar/go/ingest"
@@ -307,8 +308,28 @@ func (s *ProcessorRunner) runChangeProcessorOnLedger(
 		logFrequency,
 		s.logMemoryStats,
 	)
-	if err = processors.StreamChanges(s.ctx, changeProcessor, changeReader); err != nil {
-		return errors.Wrap(err, "Error streaming changes from ledger")
+
+	compactor := ingest.NewChangeCompactor()
+	for {
+		change, err := changeReader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return errors.Wrap(err, "could not read change")
+		}
+		if err = compactor.AddChange(change); err != nil {
+			return errors.Wrap(err, "could not add change to compactor")
+		}
+	}
+
+	for _, change := range compactor.GetChanges() {
+		if err = changeProcessor.ProcessChange(s.ctx, change); err != nil {
+			return errors.Wrap(
+				err,
+				"could not process change",
+			)
+		}
 	}
 
 	err = changeProcessor.Commit(s.ctx)
