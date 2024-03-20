@@ -120,14 +120,13 @@ func buildChangeProcessor(
 		StatsChangeProcessor: changeStats,
 	}
 
-	useLedgerCache := source == ledgerSource
 	return newGroupChangeProcessors([]horizonChangeProcessor{
 		statsChangeProcessor,
 		processors.NewAccountDataProcessor(historyQ),
 		processors.NewAccountsProcessor(historyQ),
 		processors.NewOffersProcessor(historyQ, ledgerSequence),
 		processors.NewAssetStatsProcessor(historyQ, networkPassphrase, source == historyArchiveSource, ledgerSequence),
-		processors.NewSignersProcessor(historyQ, useLedgerCache),
+		processors.NewSignersProcessor(historyQ),
 		processors.NewTrustLinesProcessor(historyQ),
 		processors.NewClaimableBalancesChangeProcessor(historyQ),
 		processors.NewLiquidityPoolsChangeProcessor(historyQ, ledgerSequence),
