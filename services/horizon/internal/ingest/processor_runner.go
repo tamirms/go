@@ -311,7 +311,8 @@ func (s *ProcessorRunner) runChangeProcessorOnLedger(
 
 	compactor := ingest.NewChangeCompactor()
 	for {
-		change, err := changeReader.Read()
+		var change ingest.Change
+		change, err = changeReader.Read()
 		if err == io.EOF {
 			break
 		}

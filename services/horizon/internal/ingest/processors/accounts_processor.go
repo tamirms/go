@@ -53,7 +53,7 @@ func (p *AccountsProcessor) ProcessChange(ctx context.Context, change ingest.Cha
 	case change.Pre == nil && change.Post != nil:
 		// Created
 		row := p.ledgerEntryToRow(*change.Post)
-		err := p.batchInsertBuilder.Add(row)
+		err = p.batchInsertBuilder.Add(row)
 		if err != nil {
 			return errors.Wrap(err, "Error adding to AccountsBatchInsertBuilder")
 		}
