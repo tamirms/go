@@ -289,22 +289,28 @@ func TestTruncateIngestStateTables(t *testing.T) {
 	test.ResetHorizonDB(t, tt.HorizonDB)
 	q := &history.Q{&db.Session{DB: tt.HorizonDB}}
 
+	// insert ledger entries of all types into the DB
 	tt.Assert.NoError(q.BeginTx(tt.Ctx, &sql.TxOptions{}))
 	checkpointLedger := uint32(63)
-	changeProcessor := buildChangeProcessor(q, &ingest.StatsChangeProcessor{}, ledgerSource, checkpointLedger, "")
+	changeProcessor := buildChangeProcessor(q, &ingest.StatsChangeProcessor{}, historyArchiveSource, checkpointLedger, "")
 	for _, change := range ingest.GetChangesFromLedgerEntryChanges(generateRandomLedgerEntries(tt)) {
 		tt.Assert.NoError(changeProcessor.ProcessChange(tt.Ctx, change))
 	}
 	tt.Assert.NoError(changeProcessor.Commit(tt.Ctx))
 	tt.Assert.NoError(q.Commit())
 
+	// clear out the state tables
 	q.TruncateIngestStateTables(tt.Ctx)
 
+	// reinsert the same ledger entries from before
 	tt.Assert.NoError(q.BeginTx(tt.Ctx, &sql.TxOptions{}))
-	changeProcessor = buildChangeProcessor(q, &ingest.StatsChangeProcessor{}, ledgerSource, checkpointLedger, "")
+	changeProcessor = buildChangeProcessor(q, &ingest.StatsChangeProcessor{}, historyArchiveSource, checkpointLedger, "")
 	for _, change := range ingest.GetChangesFromLedgerEntryChanges(generateRandomLedgerEntries(tt)) {
 		tt.Assert.NoError(changeProcessor.ProcessChange(tt.Ctx, change))
 	}
+	// this should succeed if we cleared out the state tables properly
+	// otherwise, there will be a duplicate key error when we attempt to
+	// insert a row that is already present
 	tt.Assert.NoError(changeProcessor.Commit(tt.Ctx))
 	tt.Assert.NoError(q.Commit())
 }
@@ -318,7 +324,7 @@ func TestStateVerifierLockBusy(t *testing.T) {
 	tt.Assert.NoError(q.BeginTx(tt.Ctx, &sql.TxOptions{}))
 
 	checkpointLedger := uint32(63)
-	changeProcessor := buildChangeProcessor(q, &ingest.StatsChangeProcessor{}, ledgerSource, checkpointLedger, "")
+	changeProcessor := buildChangeProcessor(q, &ingest.StatsChangeProcessor{}, historyArchiveSource, checkpointLedger, "")
 
 	for _, change := range ingest.GetChangesFromLedgerEntryChanges(generateRandomLedgerEntries(tt)) {
 		tt.Assert.NoError(changeProcessor.ProcessChange(tt.Ctx, change))
@@ -364,17 +370,14 @@ func TestStateVerifier(t *testing.T) {
 
 	ledger := rand.Int31()
 	checkpointLedger := uint32(ledger - (ledger % 64) - 1)
-	changeProcessor := buildChangeProcessor(q, &ingest.StatsChangeProcessor{}, ledgerSource, checkpointLedger, "")
+	changeProcessor := buildChangeProcessor(q, &ingest.StatsChangeProcessor{}, historyArchiveSource, checkpointLedger, "")
 	mockChangeReader := &ingest.MockChangeReader{}
 
-	coverage := map[xdr.LedgerEntryType]int{}
 	for _, change := range ingest.GetChangesFromLedgerEntryChanges(generateRandomLedgerEntries(tt)) {
 		mockChangeReader.On("Read").Return(change, nil).Once()
 		tt.Assert.NoError(changeProcessor.ProcessChange(tt.Ctx, change))
-		coverage[change.Type]++
 	}
 	tt.Assert.NoError(changeProcessor.Commit(tt.Ctx))
-	tt.Assert.Equal(len(xdr.LedgerEntryTypeMap), len(coverage))
 
 	tt.Assert.NoError(q.Commit())
 
@@ -402,6 +405,7 @@ func TestStateVerifier(t *testing.T) {
 
 func generateRandomLedgerEntries(tt *test.T) []xdr.LedgerEntryChange {
 	gen := randxdr.NewGenerator()
+
 	var changes []xdr.LedgerEntryChange
 	for i := 0; i < 100; i++ {
 		changes = append(changes,
@@ -417,5 +421,12 @@ func generateRandomLedgerEntries(tt *test.T) []xdr.LedgerEntryChange {
 		)
 		changes = append(changes, genAssetContractMetadata(tt, gen)...)
 	}
+
+	coverage := map[xdr.LedgerEntryType]int{}
+	for _, change := range changes {
+		coverage[change.Created.Data.Type]++
+	}
+	tt.Assert.Equal(len(xdr.LedgerEntryTypeMap), len(coverage))
+
 	return changes
 }
