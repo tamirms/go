@@ -76,7 +76,7 @@ type ProcessorRunnerInterface interface {
 		ledgerProtocolVersion uint32,
 		bucketListHash xdr.Hash,
 	) (ingest.StatsChangeProcessorResults, error)
-	RunTransactionProcessorsOnLedgers(ledgers []xdr.LedgerCloseMeta) error
+	RunTransactionProcessorsOnLedgers(ledgers []xdr.LedgerCloseMeta, execInTx bool) error
 	RunAllProcessorsOnLedger(ledger xdr.LedgerCloseMeta) (
 		stats ledgerStats,
 		err error,
@@ -479,7 +479,7 @@ func registerTransactionProcessors(
 	return nil
 }
 
-func (s *ProcessorRunner) RunTransactionProcessorsOnLedgers(ledgers []xdr.LedgerCloseMeta) (err error) {
+func (s *ProcessorRunner) RunTransactionProcessorsOnLedgers(ledgers []xdr.LedgerCloseMeta, execInTx bool) (err error) {
 	ledgersProcessor := processors.NewLedgerProcessor(s.historyQ.NewLedgerBatchInsertBuilder(), CurrentVersion)
 
 	groupTransactionFilterers := s.buildTransactionFilterer()
@@ -515,9 +515,21 @@ func (s *ProcessorRunner) RunTransactionProcessorsOnLedgers(ledgers []xdr.Ledger
 		groupTransactionFilterers.ResetStats()
 	}
 
+	if execInTx {
+		if err = s.session.Begin(s.ctx); err != nil {
+			return err
+		}
+		defer s.session.Rollback()
+	}
+
 	err = s.flushProcessors(groupFilteredOutProcessors, groupTransactionProcessors)
 	if err != nil {
 		return
+	}
+	if execInTx {
+		if err = s.session.Commit(); err != nil {
+			return err
+		}
 	}
 	curHeap, sysHeap = getMemStats()
 	log.WithFields(logpkg.F{

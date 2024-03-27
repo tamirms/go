@@ -477,7 +477,7 @@ func TestProcessorRunnerRunTransactionsProcessorsOnLedgers(t *testing.T) {
 		filters:  &MockFilters{},
 	}
 
-	err := runner.RunTransactionProcessorsOnLedgers(ledgers)
+	err := runner.RunTransactionProcessorsOnLedgers(ledgers, false)
 	assert.NoError(t, err)
 }
 
