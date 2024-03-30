@@ -20,15 +20,15 @@ func (s *memoryTempSet) Add(key string) error {
 	return nil
 }
 
-// Preload does not do anything. This TempSet keeps everything in memory
-// so no preloading needed.
-func (s *memoryTempSet) Preload(keys []string) error {
-	return nil
-}
-
 // Exist check if the key exists in a TempSet.
 func (s *memoryTempSet) Exist(key string) (bool, error) {
 	return s.m[key], nil
+}
+
+// Remove removes a key from the TempSet
+func (s *memoryTempSet) Remove(key string) error {
+	delete(s.m, key)
+	return nil
 }
 
 // Close removes reference to internal data structure.

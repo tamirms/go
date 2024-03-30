@@ -50,11 +50,10 @@ var _ ChangeReader = &CheckpointChangeReader{}
 // does not need to be thread-safe.
 type tempSet interface {
 	Open() error
-	// Preload batch-loads keys into internal cache (if a store has any) to
-	// improve execution time by removing many round-trips.
-	Preload(keys []string) error
 	// Add adds key to the store.
 	Add(key string) error
+	// Remove removes a key from the store
+	Remove(key string) error
 	// Exist returns value true if the value is found in the store.
 	// If the value has not been set, it should return false.
 	Exist(key string) (bool, error)
@@ -305,96 +304,21 @@ func (r *CheckpointChangeReader) streamBucketContents(hash historyarchive.Hash, 
 	// No METAENTRY means that bucket originates from before protocol version 11.
 	bucketProtocolVersion := uint32(0)
 
-	n := -1
-	var batch []xdr.BucketEntry
-	lastBatch := false
-
-	preloadKeys := make([]string, 0, preloadedEntries)
-
-LoopBucketEntry:
-	for {
-		// Preload entries for faster retrieve from temp store.
-		if len(batch) == 0 {
-			if lastBatch {
+	for n := 0; ; n++ {
+		var entry xdr.BucketEntry
+		entry, e = r.readBucketEntry(rdr, hash)
+		if e != nil {
+			if e == io.EOF {
+				// No entries loaded for this batch, nothing more to process
 				return true
 			}
-			batch = make([]xdr.BucketEntry, 0, preloadedEntries)
-
-			// reset the content of the preloadKeys
-			preloadKeys = preloadKeys[:0]
-
-			for i := 0; i < preloadedEntries; i++ {
-				var entry xdr.BucketEntry
-				entry, e = r.readBucketEntry(rdr, hash)
-				if e != nil {
-					if e == io.EOF {
-						if len(batch) == 0 {
-							// No entries loaded for this batch, nothing more to process
-							return true
-						}
-						lastBatch = true
-						break
-					}
-					r.readChan <- r.error(
-						errors.Wrapf(e, "Error on XDR record %d of hash '%s'", n, hash.String()),
-					)
-					return false
-				}
-
-				batch = append(batch, entry)
-
-				// Generate a key
-				var key xdr.LedgerKey
-				var err error
-
-				switch entry.Type {
-				case xdr.BucketEntryTypeLiveentry, xdr.BucketEntryTypeInitentry:
-					liveEntry := entry.MustLiveEntry()
-					key, err = liveEntry.LedgerKey()
-					if err != nil {
-						r.readChan <- r.error(
-							errors.Wrapf(err, "Error generating ledger key for XDR record %d of hash '%s'", n, hash.String()),
-						)
-						return false
-					}
-				case xdr.BucketEntryTypeDeadentry:
-					key = entry.MustDeadEntry()
-				default:
-					// No ledger key associated with this entry, continue to the next one.
-					continue
-				}
-
-				// We're using compressed keys here
-				// safe, since we are converting to string right away
-				keyBytes, e := r.encodingBuffer.LedgerKeyUnsafeMarshalBinaryCompress(key)
-				if e != nil {
-					r.readChan <- r.error(
-						errors.Wrapf(e, "Error marshaling XDR record %d of hash '%s'", n, hash.String()),
-					)
-					return false
-				}
-
-				h := string(keyBytes)
-				preloadKeys = append(preloadKeys, h)
-			}
-
-			err := r.tempStore.Preload(preloadKeys)
-			if err != nil {
-				r.readChan <- r.error(errors.Wrap(err, "Error preloading keys"))
-				return false
-			}
+			r.readChan <- r.error(
+				errors.Wrapf(e, "Error on XDR record %d of hash '%s'", n, hash.String()),
+			)
+			return false
 		}
 
-		var entry xdr.BucketEntry
-		entry, batch = batch[0], batch[1:]
-
-		n++
-
-		var key xdr.LedgerKey
-		var err error
-
-		switch entry.Type {
-		case xdr.BucketEntryTypeMetaentry:
+		if entry.Type == xdr.BucketEntryTypeMetaentry {
 			if n != 0 {
 				r.readChan <- r.error(
 					errors.Errorf(
@@ -407,7 +331,13 @@ LoopBucketEntry:
 			// We can't use MustMetaEntry() here. Check:
 			// https://github.com/golang/go/issues/32560
 			bucketProtocolVersion = uint32(entry.MetaEntry.LedgerVersion)
-			continue LoopBucketEntry
+			continue
+		}
+
+		var key xdr.LedgerKey
+		var err error
+
+		switch entry.Type {
 		case xdr.BucketEntryTypeLiveentry, xdr.BucketEntryTypeInitentry:
 			liveEntry := entry.MustLiveEntry()
 			key, err = liveEntry.LedgerKey()
@@ -439,6 +369,8 @@ LoopBucketEntry:
 		}
 
 		h := string(keyBytes)
+		unique := key.Type == xdr.LedgerEntryTypeClaimableBalance ||
+			key.Type == xdr.LedgerEntryTypeOffer
 
 		switch entry.Type {
 		case xdr.BucketEntryTypeLiveentry, xdr.BucketEntryTypeInitentry:
@@ -482,6 +414,12 @@ LoopBucketEntry:
 						r.readChan <- r.error(errors.Wrap(err, "Error updating to tempStore"))
 						return false
 					}
+				}
+			} else if entry.Type == xdr.BucketEntryTypeInitentry && unique {
+				err := r.tempStore.Remove(h)
+				if err != nil {
+					r.readChan <- r.error(errors.Wrap(err, "Error removing key from tempStore"))
+					return false
 				}
 			}
 		case xdr.BucketEntryTypeDeadentry:
