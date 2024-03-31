@@ -5,24 +5,25 @@ package ingest
 // state processing. The internal structure is dereferenced after the
 // store is closed.
 type memoryTempSet struct {
-	m map[string]bool
+	m map[string]struct{}
 }
 
 // Open initialize internals data structure.
 func (s *memoryTempSet) Open() error {
-	s.m = make(map[string]bool)
+	s.m = make(map[string]struct{})
 	return nil
 }
 
 // Add adds a key to TempSet.
 func (s *memoryTempSet) Add(key string) error {
-	s.m[key] = true
+	s.m[key] = struct{}{}
 	return nil
 }
 
 // Exist check if the key exists in a TempSet.
 func (s *memoryTempSet) Exist(key string) (bool, error) {
-	return s.m[key], nil
+	_, exists := s.m[key]
+	return exists, nil
 }
 
 // Remove removes a key from the TempSet
