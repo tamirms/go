@@ -269,8 +269,7 @@ func TestProcessorRunnerWithFilterEnabled(t *testing.T) {
 	ctx := context.Background()
 
 	config := Config{
-		NetworkPassphrase:        network.PublicNetworkPassphrase,
-		EnableIngestionFiltering: true,
+		NetworkPassphrase: network.PublicNetworkPassphrase,
 	}
 
 	q := &mockDBQ{}

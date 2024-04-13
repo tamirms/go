@@ -165,17 +165,15 @@ func (s *ProcessorRunner) buildTransactionProcessor(ledgersProcessor *processors
 
 func (s *ProcessorRunner) buildTransactionFilterer() *groupTransactionFilterers {
 	var f []processors.LedgerTransactionFilterer
-	if s.config.EnableIngestionFiltering {
-		f = append(f, s.filters.GetFilters(s.historyQ, s.ctx)...)
-	}
-
+	f = append(f, s.filters.GetFilters(s.historyQ, s.ctx)...)
 	return newGroupTransactionFilterers(f)
 }
 
 func (s *ProcessorRunner) buildFilteredOutProcessor() *groupTransactionProcessors {
-	// when in online mode, the submission result processor must always run (regardless of filtering)
 	var p []horizonTransactionProcessor
-	if s.config.EnableIngestionFiltering {
+
+	// when in online mode, the submission result processor must always run (regardless of whether filter rules exist or not)
+	if !s.config.ReingestEnabled {
 		txSubProc := processors.NewTransactionFilteredTmpProcessor(s.historyQ.NewTransactionFilteredTmpBatchInsertBuilder(), s.config.SkipTxmeta)
 		p = append(p, txSubProc)
 	}
@@ -540,7 +538,8 @@ func (s *ProcessorRunner) RunTransactionProcessorsOnLedgers(ledgers []xdr.Ledger
 }
 
 func (s *ProcessorRunner) flushProcessors(groupFilteredOutProcessors *groupTransactionProcessors, groupTransactionProcessors *groupTransactionProcessors) (err error) {
-	if s.config.EnableIngestionFiltering {
+
+	if !s.config.ReingestEnabled {
 		err = groupFilteredOutProcessors.Flush(s.ctx, s.session)
 		if err != nil {
 			err = errors.Wrap(err, "Error flushing temp filtered tx from processor")
