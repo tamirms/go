@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/stellar/go/historyarchive"
+	"github.com/stellar/go/support/collections/set"
 	"github.com/stellar/go/support/errors"
 	"github.com/stellar/go/xdr"
 )
@@ -21,15 +22,15 @@ type readResult struct {
 // snapshot. The Changes produced by a CheckpointChangeReader reflect the state of the Stellar
 // network at a particular checkpoint ledger sequence.
 type CheckpointChangeReader struct {
-	ctx        context.Context
-	has        *historyarchive.HistoryArchiveState
-	archive    historyarchive.ArchiveInterface
-	tempStore  tempSet
-	sequence   uint32
-	readChan   chan readResult
-	streamOnce sync.Once
-	closeOnce  sync.Once
-	done       chan bool
+	ctx               context.Context
+	has               *historyarchive.HistoryArchiveState
+	archive           historyarchive.ArchiveInterface
+	visitedLedgerKeys set.Set[string]
+	sequence          uint32
+	readChan          chan readResult
+	streamOnce        sync.Once
+	closeOnce         sync.Once
+	done              chan bool
 
 	readBytesMutex sync.RWMutex
 	totalRead      int64
@@ -44,21 +45,6 @@ type CheckpointChangeReader struct {
 
 // Ensure CheckpointChangeReader implements ChangeReader
 var _ ChangeReader = &CheckpointChangeReader{}
-
-// tempSet is an interface that must be implemented by stores that
-// hold temporary set of objects for state reader. The implementation
-// does not need to be thread-safe.
-type tempSet interface {
-	Open() error
-	// Add adds key to the store.
-	Add(key string) error
-	// Remove removes a key from the store
-	Remove(key string) error
-	// Exist returns value true if the value is found in the store.
-	// If the value has not been set, it should return false.
-	Exist(key string) (bool, error)
-	Close() error
-}
 
 const (
 	// maxStreamRetries defines how many times should we retry when there are errors in
@@ -96,24 +82,18 @@ func NewCheckpointChangeReader(
 		return nil, errors.Wrapf(err, "unable to get checkpoint HAS at ledger sequence %d", sequence)
 	}
 
-	tempStore := &memoryTempSet{}
-	err = tempStore.Open()
-	if err != nil {
-		return nil, errors.Wrap(err, "unable to get open temp store")
-	}
-
 	return &CheckpointChangeReader{
-		ctx:            ctx,
-		has:            &has,
-		archive:        archive,
-		tempStore:      tempStore,
-		sequence:       sequence,
-		readChan:       make(chan readResult, msrBufferSize),
-		streamOnce:     sync.Once{},
-		closeOnce:      sync.Once{},
-		done:           make(chan bool),
-		encodingBuffer: xdr.NewEncodingBuffer(),
-		sleep:          time.Sleep,
+		ctx:               ctx,
+		has:               &has,
+		archive:           archive,
+		visitedLedgerKeys: set.Set[string]{},
+		sequence:          sequence,
+		readChan:          make(chan readResult, msrBufferSize),
+		streamOnce:        sync.Once{},
+		closeOnce:         sync.Once{},
+		done:              make(chan bool),
+		encodingBuffer:    xdr.NewEncodingBuffer(),
+		sleep:             time.Sleep,
 	}, nil
 }
 
@@ -135,21 +115,18 @@ func (r *CheckpointChangeReader) bucketExists(hash historyarchive.Hash) (bool, e
 // However, we can modify this algorithm to work from newest to oldest ledgers:
 //
 //  1. For each `INITENTRY`/`LIVEENTRY` we check if we've seen the key before
-//     (stored in `tempStore`). If the key hasn't been seen, we write that bucket
-//     entry to the stream and add it to the `tempStore` (we don't mark `INITENTRY`,
+//     (stored in `visitedLedgerKeys`). If the key hasn't been seen, we write that bucket
+//     entry to the stream and add it to the `visitedLedgerKeys` (we don't mark `INITENTRY`,
 //     see the inline comment or CAP-20).
 //  2. For each `DEADENTRY` we keep track of removed bucket entries in
-//     `tempStore` map.
+//     `visitedLedgerKeys` map.
 //
 // In such algorithm we just need to store a set of keys that require much less space.
 // The memory requirements will be lowered when CAP-0020 is live and older buckets are
 // rewritten. Then, we will only need to keep track of `DEADENTRY`.
 func (r *CheckpointChangeReader) streamBuckets() {
 	defer func() {
-		err := r.tempStore.Close()
-		if err != nil {
-			r.readChan <- r.error(errors.New("Error closing tempStore"))
-		}
+		r.visitedLedgerKeys = nil
 
 		r.closeOnce.Do(r.close)
 		close(r.readChan)
@@ -380,13 +357,7 @@ func (r *CheckpointChangeReader) streamBucketContents(hash historyarchive.Hash, 
 				return false
 			}
 
-			seen, err := r.tempStore.Exist(h)
-			if err != nil {
-				r.readChan <- r.error(errors.Wrap(err, "Error reading from tempStore"))
-				return false
-			}
-
-			if !seen {
+			if !r.visitedLedgerKeys.Contains(h) {
 				// Return LEDGER_ENTRY_STATE changes only now.
 				liveEntry := entry.MustLiveEntry()
 				entryChange := xdr.LedgerEntryChange{
@@ -395,40 +366,28 @@ func (r *CheckpointChangeReader) streamBucketContents(hash historyarchive.Hash, 
 				}
 				r.readChan <- readResult{entryChange, nil}
 
-				// We don't update `tempStore` for INITENTRY because CAP-20 says:
+				// We don't update `visitedLedgerKeys` for INITENTRY because CAP-20 says:
 				// > a bucket entry marked INITENTRY implies that either no entry
 				// > with the same ledger key exists in an older bucket, or else
 				// > that the (chronologically) preceding entry with the same ledger
 				// > key was DEADENTRY.
 				if entry.Type == xdr.BucketEntryTypeLiveentry {
-					// We skip adding entries from the last bucket to tempStore because:
+					// We skip adding entries from the last bucket to visitedLedgerKeys because:
 					// 1. Ledger keys are unique within a single bucket.
 					// 2. This is the last bucket we process so there's no need to track
 					//    seen last entries in this bucket.
 					if oldestBucket {
 						continue
 					}
-					err := r.tempStore.Add(h)
-					if err != nil {
-						r.readChan <- r.error(errors.Wrap(err, "Error updating to tempStore"))
-						return false
-					}
+					r.visitedLedgerKeys.Add(h)
 				}
 			} else if entry.Type == xdr.BucketEntryTypeInitentry && unique {
 				// we can remove the ledger key because we know that it's unique in the ledger
 				// and cannot be recreated
-				err := r.tempStore.Remove(h)
-				if err != nil {
-					r.readChan <- r.error(errors.Wrap(err, "Error removing key from tempStore"))
-					return false
-				}
+				r.visitedLedgerKeys.Remove(h)
 			}
 		case xdr.BucketEntryTypeDeadentry:
-			err := r.tempStore.Add(h)
-			if err != nil {
-				r.readChan <- r.error(errors.Wrap(err, "Error writing to tempStore"))
-				return false
-			}
+			r.visitedLedgerKeys.Add(h)
 		default:
 			r.readChan <- r.error(
 				errors.Errorf("Unexpected entry type %d: %d@%s", entry.Type, n, hash.String()),
