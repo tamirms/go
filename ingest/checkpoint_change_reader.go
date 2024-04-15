@@ -364,6 +364,10 @@ func (r *CheckpointChangeReader) streamBucketContents(hash historyarchive.Hash, 
 		}
 
 		h := string(keyBytes)
+		// claimable balances and offers have unique ids
+		// once a claimable balance or offer is created we can assume that
+		// the id can never be recreated again, unlike, for example, trustlines
+		// which can be deleted and then recreated
 		unique := key.Type == xdr.LedgerEntryTypeClaimableBalance ||
 			key.Type == xdr.LedgerEntryTypeOffer
 
@@ -411,6 +415,8 @@ func (r *CheckpointChangeReader) streamBucketContents(hash historyarchive.Hash, 
 					}
 				}
 			} else if entry.Type == xdr.BucketEntryTypeInitentry && unique {
+				// we can remove the ledger key because we know that it's unique in the ledger
+				// and cannot be recreated
 				err := r.tempStore.Remove(h)
 				if err != nil {
 					r.readChan <- r.error(errors.Wrap(err, "Error removing key from tempStore"))
