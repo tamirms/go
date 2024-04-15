@@ -65,11 +65,6 @@ const (
 	// the xdr stream returned by GetXdrStreamForHash().
 	maxStreamRetries = 3
 	msrBufferSize    = 50000
-
-	// preloadedEntries defines a number of bucket entries to preload from a
-	// bucket in a single run. This is done to allow preloading keys from
-	// temp set.
-	preloadedEntries = 20000
 )
 
 // NewCheckpointChangeReader constructs a new CheckpointChangeReader instance.
