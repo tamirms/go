@@ -233,9 +233,11 @@ func (s *SingleLedgerStateReaderTestSuite) TestUniqueInitEntryOptimization() {
 		metaEntry(20),
 		entryAccount(xdr.BucketEntryTypeInitentry, "GALPCCZN4YXA3YMJHKL6CVIECKPLJJCTVMSNYWBTKJW4K5HQLYLDMZTB", 1),
 		entryAccount(xdr.BucketEntryTypeInitentry, "GC3C4AKRBQLHOJ45U4XG35ESVWRDECWO5XLDGYADO6DPR3L7KIDVUMML", 1),
+		entryAccount(xdr.BucketEntryTypeInitentry, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H", 1),
 		entryCB(xdr.BucketEntryTypeInitentry, xdr.Hash{1, 2, 3}, 100),
 		entryOffer(xdr.BucketEntryTypeInitentry, "GC3C4AKRBQLHOJ45U4XG35ESVWRDECWO5XLDGYADO6DPR3L7KIDVUMML", 20),
 		entryAccount(xdr.BucketEntryTypeInitentry, "GAP2KHWUMOHY7IO37UJY7SEBIITJIDZS5DRIIQRPEUT4VUKHZQGIRWS4", 1),
+		entryAccount(xdr.BucketEntryTypeInitentry, "GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR", 1),
 	)
 
 	nextBucket := s.getNextBucketChannel()
@@ -310,6 +312,17 @@ func (s *SingleLedgerStateReaderTestSuite) TestUniqueInitEntryOptimization() {
 	s.Require().True(
 		key.Equals(xdr.LedgerKey{
 			Type:    xdr.LedgerEntryTypeAccount,
+			Account: &xdr.LedgerKeyAccount{AccountId: xdr.MustAddress("GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H")},
+		}),
+	)
+
+	change, err = s.reader.Read()
+	s.Require().NoError(err)
+	key, err = change.Post.Data.LedgerKey()
+	s.Require().NoError(err)
+	s.Require().True(
+		key.Equals(xdr.LedgerKey{
+			Type:    xdr.LedgerEntryTypeAccount,
 			Account: &xdr.LedgerKeyAccount{AccountId: xdr.MustAddress("GAP2KHWUMOHY7IO37UJY7SEBIITJIDZS5DRIIQRPEUT4VUKHZQGIRWS4")},
 		}),
 	)
@@ -320,6 +333,17 @@ func (s *SingleLedgerStateReaderTestSuite) TestUniqueInitEntryOptimization() {
 		Type:    xdr.LedgerEntryTypeAccount,
 		Account: &xdr.LedgerKeyAccount{AccountId: xdr.MustAddress("GC3C4AKRBQLHOJ45U4XG35ESVWRDECWO5XLDGYADO6DPR3L7KIDVUMML")},
 	})
+
+	change, err = s.reader.Read()
+	s.Require().NoError(err)
+	key, err = change.Post.Data.LedgerKey()
+	s.Require().NoError(err)
+	s.Require().True(
+		key.Equals(xdr.LedgerKey{
+			Type:    xdr.LedgerEntryTypeAccount,
+			Account: &xdr.LedgerKeyAccount{AccountId: xdr.MustAddress("GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSRcomm")},
+		}),
+	)
 
 	_, err = s.reader.Read()
 	s.Require().Equal(err, io.EOF)
