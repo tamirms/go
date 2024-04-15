@@ -341,7 +341,7 @@ func (s *SingleLedgerStateReaderTestSuite) TestUniqueInitEntryOptimization() {
 	s.Require().True(
 		key.Equals(xdr.LedgerKey{
 			Type:    xdr.LedgerEntryTypeAccount,
-			Account: &xdr.LedgerKeyAccount{AccountId: xdr.MustAddress("GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSRcomm")},
+			Account: &xdr.LedgerKeyAccount{AccountId: xdr.MustAddress("GAIH3ULLFQ4DGSECF2AR555KZ4KNDGEKN4AFI4SU2M7B43MGK3QJZNSR")},
 		}),
 	)
 
