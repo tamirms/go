@@ -50,6 +50,9 @@ func TestCloseOffline(t *testing.T) {
 	runner.systemCaller = scMock
 
 	assert.NoError(t, runner.catchup(100, 200))
+	// close can be called multiple times safely
+	assert.NoError(t, runner.close())
+	assert.NoError(t, runner.close())
 	assert.NoError(t, runner.close())
 }
 
@@ -133,7 +136,7 @@ func TestCloseOnlineWithError(t *testing.T) {
 		"--metadata-output-stream",
 		"fd:3",
 	).Return(cmdMock)
-	scMock.On("removeAll", mock.Anything).Return(nil)
+	scMock.On("removeAll", mock.Anything).Return(nil).Once()
 	runner.systemCaller = scMock
 
 	assert.NoError(t, runner.runFrom(100, "hash"))
@@ -146,6 +149,9 @@ func TestCloseOnlineWithError(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	// close can be called multiple times safely
+	assert.NoError(t, runner.close())
+	assert.NoError(t, runner.close())
 	assert.NoError(t, runner.close())
 }
 
@@ -300,7 +306,7 @@ func TestRunFromUseDBLedgersInFront(t *testing.T) {
 	scMock := &mockSystemCaller{}
 	defer scMock.AssertExpectations(t)
 	// Storage dir is removed because ledgers do not match
-	scMock.On("removeAll", mock.Anything).Return(nil)
+	scMock.On("removeAll", mock.Anything).Return(nil).Once()
 	scMock.On("stat", mock.Anything).Return(isDirImpl(true), nil)
 	scMock.On("writeFile", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	scMock.On("command",
@@ -336,5 +342,8 @@ func TestRunFromUseDBLedgersInFront(t *testing.T) {
 	runner.systemCaller = scMock
 
 	assert.NoError(t, runner.runFrom(100, "hash"))
+	// close can be called multiple times safely
+	assert.NoError(t, runner.close())
+	assert.NoError(t, runner.close())
 	assert.NoError(t, runner.close())
 }
