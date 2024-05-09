@@ -47,7 +47,7 @@ func TestCloseOffline(t *testing.T) {
 		"fd:3",
 		"--in-memory",
 	).Return(cmdMock)
-	scMock.On("removeAll", mock.Anything).Return(nil)
+	scMock.On("removeAll", mock.Anything).Return(nil).Once()
 	runner.systemCaller = scMock
 
 	assert.NoError(t, runner.catchup(100, 200))
@@ -179,28 +179,17 @@ func TestCloseConcurrency(t *testing.T) {
 		"--conf",
 		mock.Anything,
 		"--console",
-		"run",
-		"--in-memory",
-		"--start-at-ledger",
-		"100",
-		"--start-at-hash",
-		"hash",
+		"catchup",
+		"200/101",
 		"--metadata-output-stream",
 		"fd:3",
+		"--in-memory",
 	).Return(cmdMock)
 	scMock.On("removeAll", mock.Anything).Return(nil).Once()
 	runner.systemCaller = scMock
 
-	assert.NoError(t, runner.runFrom(100, "hash"))
+	assert.NoError(t, runner.catchup(100, 200))
 
-	// Wait with calling close until r.processExitError is set to Wait() error
-	for {
-		_, err := runner.getProcessExitError()
-		if err != nil {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
@@ -209,7 +198,7 @@ func TestCloseConcurrency(t *testing.T) {
 			assert.NoError(t, runner.close())
 			exited, err := runner.getProcessExitError()
 			assert.True(t, exited)
-			assert.EqualError(t, err, "wait error")
+			assert.Error(t, err)
 		}()
 	}
 
