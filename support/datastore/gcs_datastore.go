@@ -66,11 +66,11 @@ func NewGCSDataStore(ctx context.Context, params map[string]string, network stri
 // GetFile retrieves a file from the GCS bucket.
 func (b GCSDataStore) GetFile(ctx context.Context, filePath string) (io.ReadCloser, error) {
 	filePath = path.Join(b.prefix, filePath)
-	// setting ReadCompressed(true) will avoid transcoding of compressed files
-	// by including an "Accept-Encoding: gzip" header to the request:
+	// setting ReadCompressed(true) will avoid transcoding of compressed files by including
+	// an "Accept-Encoding: gzip" header in the request:
 	// https://github.com/googleapis/google-cloud-go/blob/main/storage/http_client.go#L1307-L1309
 	// https://cloud.google.com/storage/docs/transcoding#decompressive_transcoding
-	// This will ensure that the reader performs CRC validation when finishing the download:
+	// This will ensure that the reader performs CRC validation upon finishing the download:
 	// https://pkg.go.dev/cloud.google.com/go/storage#Reader
 	r, err := b.bucket.Object(filePath).ReadCompressed(true).NewReader(ctx)
 	if err != nil {
@@ -160,6 +160,7 @@ func (b GCSDataStore) putFile(ctx context.Context, filePath string, in io.Writer
 		return errors.Wrapf(err, "failed to write file: %s", filePath)
 	}
 	w.SendCRC32C = true
+	// we must set CRC32C before invoking w.Write() for the first time
 	w.CRC32C = crc32.Checksum(buf.Bytes(), crc32.MakeTable(crc32.Castagnoli))
 	if _, err := in.WriteTo(buf); err != nil {
 		return errors.Wrapf(err, "failed to put file: %s", filePath)
