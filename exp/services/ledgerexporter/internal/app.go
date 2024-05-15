@@ -112,12 +112,12 @@ func (a *App) init(ctx context.Context) error {
 
 	logger.Infof("Final computed ledger range for backend retrieval and export, start=%d, end=%d", a.config.StartLedger, a.config.EndLedger)
 
-	if a.ledgerBackend, err = newLedgerBackend(ctx, a.config, registry); err != nil {
+	if a.ledgerBackend, err = newLedgerBackend(a.config, registry); err != nil {
 		return err
 	}
 
 	// TODO: make queue size configurable instead of hard coding it to 1
-	queue := NewUploadQueue(1, registry)
+	queue := NewUploadQueue(128, registry)
 	if a.exportManager, err = NewExportManager(a.config.LedgerBatchConfig, a.ledgerBackend, queue, registry); err != nil {
 		return err
 	}
@@ -189,8 +189,8 @@ func (a *App) Run() {
 
 	go func() {
 		defer wg.Done()
-
-		err := a.uploader.Run(ctx)
+		// TODO: make number of upload workers configurable instead of hard coding it to 1
+		err := a.uploader.Run(ctx, 64)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			logger.WithError(err).Error("Error executing Uploader")
 			cancel()
@@ -208,10 +208,6 @@ func (a *App) Run() {
 	}()
 
 	if a.adminServer != nil {
-		// no need to include this goroutine in the wait group
-		// because a.adminServer.Shutdown() is called below and
-		// that will block until a.adminServer has finished
-		// shutting down
 		go func() {
 			logger.Infof("Starting admin server on port %v", a.config.AdminPort)
 			if err := a.adminServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -247,7 +243,7 @@ func (a *App) Run() {
 
 // newLedgerBackend Creates and initializes captive core ledger backend
 // Currently, only supports captive-core as ledger backend
-func newLedgerBackend(ctx context.Context, config *Config, prometheusRegistry *prometheus.Registry) (ledgerbackend.LedgerBackend, error) {
+func newLedgerBackend(config *Config, prometheusRegistry *prometheus.Registry) (ledgerbackend.LedgerBackend, error) {
 	captiveConfig, err := config.GenerateCaptiveCoreConfig()
 	if err != nil {
 		return nil, err
@@ -259,17 +255,5 @@ func newLedgerBackend(ctx context.Context, config *Config, prometheusRegistry *p
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to create captive-core instance")
 	}
-	backend = ledgerbackend.WithMetrics(backend, prometheusRegistry, "ledger_exporter")
-
-	var ledgerRange ledgerbackend.Range
-	if config.EndLedger == 0 {
-		ledgerRange = ledgerbackend.UnboundedRange(config.StartLedger)
-	} else {
-		ledgerRange = ledgerbackend.BoundedRange(config.StartLedger, config.EndLedger)
-	}
-
-	if err = backend.PrepareRange(ctx, ledgerRange); err != nil {
-		return nil, errors.Wrap(err, "Could not prepare captive core ledger backend")
-	}
-	return backend, nil
+	return ledgerbackend.WithMetrics(backend, prometheusRegistry, "ledger_exporter"), nil
 }
