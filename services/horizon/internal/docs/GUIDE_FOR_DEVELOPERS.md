@@ -6,8 +6,8 @@ This document describes how to build Horizon from source, so that you can test a
 - A [Unix-like](https://en.wikipedia.org/wiki/Unix-like) operating system with the common core commands (cp, tar, mkdir, bash, etc.)
 - Go (this repository is officially supported on the last [two releases of Go](https://go.dev/doc/devel/release))
 - [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git) (to check out Horizon's source code)
-- [mercurial](https://www.mercurial-scm.org/) (needed for `go-dep`)
 - [Docker](https://www.docker.com/products/docker-desktop)
+- [stellar-core](#building-stellar-core)
 
 ## The Go Monorepo
 All the code for Horizon resides in our Go monorepo.
@@ -44,11 +44,11 @@ Horizon requires an instance of stellar-core binary on the same host. This is re
 
 ### Database Setup
 
-Horizon uses a Postgres database backend to record information ingested from an associated Stellar Core. The unit and integration tests will also attempt to reference a Postgres db server at ``localhost:5432`` with trust auth method enabled by default for ``postgres`` user.  You can either install the server locally or run any type of docker container that hosts the database server. We recommend using the [docker-compose.yml](/services/horizon/docker/docker-compose.yml) file in the ``docker`` folder:
+Horizon uses a Postgres database to record information ingested from Stellar Core. The unit and integration tests also expect a Postgres DB to be running at ``localhost:5432`` with trust auth method enabled by default for the ``postgres`` user.  You can run the following command to spin up a Horizon database as a docker container:
 ```bash
 docker-compose -f ./services/horizon/docker/docker-compose.yml up -d horizon-postgres
 ```
-This starts a Horizon Postgres docker container and exposes it on the port 5432. Note that while Horizon will run locally, it's PostgresQL db will run in docker.
+The docker container will accept database connections on port 5432. Note that while Horizon will run locally, it's PostgresQL db will run in docker.
 
 To shut down all docker containers and free up resources, run the following command:
 ```bash
@@ -86,7 +86,10 @@ If all is well, you should see ingest logs written to standard out. You can read
 Open a new terminal. Confirm everything worked by running `stellar-horizon --help` successfully. You should see an informative message listing the command line options supported by Horizon.
 
 ### Run tests
-At this point you should be able to run Horizon's unit tests:
+
+Once you have [installed stellar-core](#building-stellar-core) on your machine and have the 
+[Horizon database](#database-setup) up and running, you should be able to run Horizon's unit tests:
+
 ```bash
 cd go/services/horizon/
 go test ./...
@@ -100,7 +103,6 @@ export HORIZON_INTEGRATION_TESTS_CORE_MAX_SUPPORTED_PROTOCOL=21
 export HORIZON_INTEGRATION_TESTS_DOCKER_IMG=stellar/stellar-core:21
 go test -race -timeout 25m -v ./services/horizon/internal/integration/...
 ```
-Note that this will also require a Postgres instance running on port 5432 either locally or exposed through a docker container. Also note that the ``POSTGRES_HOST_AUTH_METHOD`` has been enabled.
 
 #### Running tests in IDE
 
