@@ -20,11 +20,12 @@ type runFromStream struct {
 }
 
 func newRunFromStream(r *stellarCoreRunner, from uint32, hash string) runFromStream {
+	// We only use ephemeral directories on windows because there is
+	// no way to terminate captive core gracefully on windows.
+	// Having an ephemeral directory ensures that it is wiped out
+	// whenever we terminate captive core
 	dir := newWorkingDir(r, runtime.GOOS == "windows")
 	return runFromStream{
-		// We want to use random directories in offline mode (reingestion)
-		// because it's possible to parallel ingestion where multiple captive
-		// cores are active on the same machine
 		dir:            dir,
 		from:           from,
 		hash:           hash,
