@@ -87,11 +87,7 @@ func run(cmd *cobra.Command, args []string) {
 }
 
 func initRouter(cfg Config, fb *internal.Bot) *chi.Mux {
-	mux := chi.NewRouter()
-	// first apply XFFMiddleware so we can have the real ip in the subsequent
-	// middlewares
-	mux.Use(http.XFFMiddleware(http.XFFMiddlewareConfig{BehindCloudflare: cfg.UseCloudflareIP}))
-	mux.Use(http.NewAPIMux(log.DefaultLogger).Middlewares()...)
+	mux := newMux(cfg)
 
 	handler := &internal.FriendbotHandler{Friendbot: fb}
 	mux.Get("/", handler.Handle)
@@ -100,6 +96,15 @@ func initRouter(cfg Config, fb *internal.Bot) *chi.Mux {
 		problem.Render(r.Context(), w, problem.NotFound)
 	}))
 
+	return mux
+}
+
+func newMux(cfg Config) *chi.Mux {
+	mux := chi.NewRouter()
+	// first apply XFFMiddleware so we can have the real ip in the subsequent
+	// middlewares
+	mux.Use(http.XFFMiddleware(http.XFFMiddlewareConfig{BehindCloudflare: cfg.UseCloudflareIP}))
+	mux.Use(http.NewAPIMux(log.DefaultLogger).Middlewares()...)
 	return mux
 }
 
