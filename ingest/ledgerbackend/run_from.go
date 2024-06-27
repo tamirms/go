@@ -56,25 +56,29 @@ func (s runFromStream) offlineInfo(ctx context.Context) (stellarcore.InfoRespons
 	return info, nil
 }
 
-func (s runFromStream) start(ctx context.Context) (cmdI, pipe, error) {
+func (s runFromStream) start(ctx context.Context) (cmd cmdI, captiveCorePipe pipe, returnErr error) {
 	var err error
-	var cmd cmdI
-	var captiveCorePipe pipe
+	var createNewDB bool
+	defer func() {
+		if returnErr != nil && createNewDB {
+			// if we could not start captive core remove the new db we created
+			s.dir.remove()
+		}
+	}()
 	if s.useDB {
 		// Check if on-disk core DB exists and what's the LCL there. If not what
 		// we need remove storage dir and start from scratch.
-		removeStorageDir := false
 		var info stellarcore.InfoResponse
 		info, err = s.offlineInfo(ctx)
 		if err != nil {
 			s.log.Infof("Error running offline-info: %v, removing existing storage-dir contents", err)
-			removeStorageDir = true
+			createNewDB = true
 		} else if info.Info.Ledger.Num <= 1 || uint32(info.Info.Ledger.Num) > s.from {
 			s.log.Infof("Unexpected LCL in Stellar-Core DB: %d (want: %d), removing existing storage-dir contents", info.Info.Ledger.Num, s.from)
-			removeStorageDir = true
+			createNewDB = true
 		}
 
-		if removeStorageDir {
+		if createNewDB {
 			if err = s.dir.remove(); err != nil {
 				return nil, pipe{}, fmt.Errorf("error removing existing storage-dir contents: %w", err)
 			}
@@ -85,8 +89,6 @@ func (s runFromStream) start(ctx context.Context) (cmdI, pipe, error) {
 			}
 
 			if err = cmd.Run(); err != nil {
-				// remove the working directory we just created because we failed to create the new db
-				s.dir.remove()
 				return nil, pipe{}, fmt.Errorf("error initializing core db: %w", err)
 			}
 
@@ -102,8 +104,6 @@ func (s runFromStream) start(ctx context.Context) (cmdI, pipe, error) {
 			}
 
 			if err = cmd.Run(); err != nil {
-				// remove the working directory we just created because we failed to catchup on the new db
-				s.dir.remove()
 				return nil, pipe{}, fmt.Errorf("error runing stellar-core catchup: %w", err)
 			}
 		}

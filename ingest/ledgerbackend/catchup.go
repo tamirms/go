@@ -17,11 +17,11 @@ type catchupStream struct {
 }
 
 func newCatchupStream(r *stellarCoreRunner, from, to uint32) catchupStream {
-	// We want to use ephemeral directories in offline mode (reingestion)
-	// because it's possible to parallel ingestion where multiple captive
-	// cores are active on the same machine. Having ephemeral directories
-	// will ensure that each ingestion worker will have a separate working
-	// directory
+	// We want to use ephemeral directories in running the catchup command
+	// (used for the reingestion use case) because it's possible to run parallel
+	// reingestion where multiple captive cores are active on the same machine.
+	// Having ephemeral directories  will ensure that each ingestion worker will
+	// have a separate working directory
 	dir := newWorkingDir(r, true)
 	return catchupStream{
 		dir:            dir,
