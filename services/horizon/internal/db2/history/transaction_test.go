@@ -957,7 +957,7 @@ func TestTransactionQueryBuilder(t *testing.T) {
 
 	tt.Assert.NoError(q.Commit())
 
-	txQ := q.Transactions().ForAccount(tt.Ctx, address).Page(db2.PageQuery{Cursor: "8589938689", Order: "asc", Limit: 10})
+	txQ := q.Transactions().ForAccount(tt.Ctx, address).Page(db2.PageQuery{Cursor: "8589938689", Order: "asc", Limit: 10}, 0)
 	tt.Assert.NoError(txQ.Err)
 	got, _, err := txQ.sql.ToSql()
 	tt.Assert.NoError(err)
@@ -980,7 +980,7 @@ func TestTransactionQueryBuilder(t *testing.T) {
 		"ORDER BY htp.history_transaction_id asc LIMIT 10"
 	tt.Assert.EqualValues(want, got)
 
-	txQ = q.Transactions().ForClaimableBalance(tt.Ctx, cbID).Page(db2.PageQuery{Cursor: "8589938689", Order: "asc", Limit: 10})
+	txQ = q.Transactions().ForClaimableBalance(tt.Ctx, cbID).Page(db2.PageQuery{Cursor: "8589938689", Order: "asc", Limit: 10}, 0)
 	tt.Assert.NoError(txQ.Err)
 	got, _, err = txQ.sql.ToSql()
 	tt.Assert.NoError(err)
@@ -1003,7 +1003,7 @@ func TestTransactionQueryBuilder(t *testing.T) {
 		"ORDER BY htcb.history_transaction_id asc LIMIT 10"
 	tt.Assert.EqualValues(want, got)
 
-	txQ = q.Transactions().ForLiquidityPool(tt.Ctx, lpID).Page(db2.PageQuery{Cursor: "8589938689", Order: "asc", Limit: 10})
+	txQ = q.Transactions().ForLiquidityPool(tt.Ctx, lpID).Page(db2.PageQuery{Cursor: "8589938689", Order: "asc", Limit: 10}, 0)
 	tt.Assert.NoError(txQ.Err)
 	got, _, err = txQ.sql.ToSql()
 	tt.Assert.NoError(err)
@@ -1026,7 +1026,7 @@ func TestTransactionQueryBuilder(t *testing.T) {
 		"ORDER BY htlp.history_transaction_id asc LIMIT 10"
 	tt.Assert.EqualValues(want, got)
 
-	txQ = q.Transactions().Page(db2.PageQuery{Cursor: "8589938689", Order: "asc", Limit: 10})
+	txQ = q.Transactions().Page(db2.PageQuery{Cursor: "8589938689", Order: "asc", Limit: 10}, 0)
 	tt.Assert.NoError(txQ.Err)
 	got, _, err = txQ.sql.ToSql()
 	tt.Assert.NoError(err)
