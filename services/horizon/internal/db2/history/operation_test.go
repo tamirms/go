@@ -196,12 +196,13 @@ func TestOperationQueryBuilder(t *testing.T) {
 				"LEFT JOIN history_transactions ht ON ht.id = hop.transaction_id " +
 				"JOIN history_operation_participants hopp ON hopp.history_operation_id = hop.id " +
 				"WHERE hopp.history_account_id = ? AND " +
-				"hopp.history_operation_id < ? AND hopp.history_operation_id >= ? " +
+				"hopp.history_operation_id > ? AND " +
+				"hopp.history_operation_id < ? " +
 				"ORDER BY hopp.history_operation_id desc LIMIT 10",
 			[]interface{}{
 				int64(2),
-				int64(8589938689),
 				int64(214748364799),
+				int64(8589938689),
 			},
 		},
 		{
