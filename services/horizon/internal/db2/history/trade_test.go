@@ -3,6 +3,7 @@ package history
 import (
 	"testing"
 
+	"github.com/stellar/go/toid"
 	"github.com/stellar/go/xdr"
 
 	"github.com/stellar/go/services/horizon/internal/db2"
@@ -46,6 +47,8 @@ func TestSelectTrades(t *testing.T) {
 	test.ResetHorizonDB(t, tt.HorizonDB)
 	q := &Q{tt.HorizonSession()}
 	fixtures := TradeScenario(tt, q)
+	afterTradesSeq := toid.Parse(fixtures.Trades[0].HistoryOperationID).LedgerSequence + 1
+	beforeTradesSeq := afterTradesSeq - 2
 
 	for _, account := range append([]string{allAccounts}, fixtures.Addresses...) {
 		for _, tradeType := range []string{AllTrades, OrderbookTrades, LiquidityPoolTrades} {
@@ -55,7 +58,7 @@ func TestSelectTrades(t *testing.T) {
 
 			assertTradesAreEqual(tt, expected, rows)
 
-			rows, err = q.GetTrades(tt.Ctx, descPQ, 0, account, tradeType)
+			rows, err = q.GetTrades(tt.Ctx, descPQ, beforeTradesSeq, account, tradeType)
 			tt.Assert.NoError(err)
 			start, end := 0, len(rows)-1
 			for start < end {
@@ -65,6 +68,10 @@ func TestSelectTrades(t *testing.T) {
 			}
 
 			assertTradesAreEqual(tt, expected, rows)
+
+			rows, err = q.GetTrades(tt.Ctx, descPQ, afterTradesSeq, account, tradeType)
+			tt.Assert.NoError(err)
+			tt.Assert.Empty(rows)
 		}
 	}
 }
