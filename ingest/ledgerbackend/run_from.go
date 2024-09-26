@@ -84,6 +84,7 @@ func (s runFromStream) start(ctx context.Context) (cmd cmdI, captiveCorePipe pip
 
 		if createNewDB {
 			if s.captiveCoreNewDBCounter != nil {
+				s.log.Info("running new db")
 				s.captiveCoreNewDBCounter.Inc()
 			}
 			if err = s.dir.remove(); err != nil {
