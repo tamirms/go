@@ -1,32 +1,36 @@
 package ingest
 
 import (
+	"bytes"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/stellar/go/xdr"
 )
 
-func assertChangesAreEqual(t *testing.T, a, b Change) {
-	assert.Equal(t, a.Type, b.Type)
+func requireChangesAreEqual(t *testing.T, a, b Change) {
+	require.Equal(t, a.Type, b.Type)
 	if a.Pre == nil {
-		assert.Nil(t, b.Pre)
+		require.Nil(t, b.Pre)
 	} else {
 		aBytes, err := a.Pre.MarshalBinary()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		bBytes, err := b.Pre.MarshalBinary()
-		assert.NoError(t, err)
-		assert.Equal(t, aBytes, bBytes)
+		require.NoError(t, err)
+		if !bytes.Equal(aBytes, bBytes) {
+			t.Log("jonx")
+		}
+		require.Equal(t, aBytes, bBytes)
 	}
 	if a.Post == nil {
-		assert.Nil(t, b.Post)
+		require.Nil(t, b.Post)
 	} else {
 		aBytes, err := a.Post.MarshalBinary()
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		bBytes, err := b.Post.MarshalBinary()
-		assert.NoError(t, err)
-		assert.Equal(t, aBytes, bBytes)
+		require.NoError(t, err)
+		require.Equal(t, aBytes, bBytes)
 	}
 }
 
@@ -207,9 +211,9 @@ func TestSortChanges(t *testing.T) {
 		},
 	} {
 		sortChanges(testCase.input)
-		assert.Equal(t, len(testCase.input), len(testCase.expected))
+		require.Equal(t, len(testCase.input), len(testCase.expected))
 		for i := range testCase.input {
-			assertChangesAreEqual(t, testCase.input[i], testCase.expected[i])
+			requireChangesAreEqual(t, testCase.input[i], testCase.expected[i])
 		}
 	}
 }
