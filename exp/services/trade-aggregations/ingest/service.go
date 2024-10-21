@@ -72,8 +72,8 @@ func Run(ctx context.Context, config Config) error {
 		return fmt.Errorf("error creating aggregation processor: %w", err)
 	}
 
-	fetchLedger := metrics.NewSample("backend.GetLedger", loggingThreshold, loggingThreshold)
-	processLedger := metrics.NewSample("processLedger", loggingThreshold, loggingThreshold)
+	fetchLedger := metrics.NewSample("backend.GetLedger", loggingThreshold, loggingThreshold, time.Second*15)
+	processLedger := metrics.NewSample("processLedger", loggingThreshold, loggingThreshold, time.Second*5)
 
 	for cur := ledgerRange.From(); !ledgerRange.Bounded() || cur <= ledgerRange.To(); cur++ {
 		var ledger xdr.LedgerCloseMeta

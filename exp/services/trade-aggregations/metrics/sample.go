@@ -9,22 +9,25 @@ import (
 )
 
 type Sample struct {
-	name       string
-	sum        time.Duration
-	count      int64
-	min        time.Duration
-	max        time.Duration
-	last       time.Duration
-	reportFreq int
-	size       int
-	lock       sync.RWMutex
+	name             string
+	sum              time.Duration
+	count            int64
+	min              time.Duration
+	max              time.Duration
+	last             time.Duration
+	reportFreq       int
+	size             int
+	lock             sync.RWMutex
+	timeoutThreshold time.Duration
+	timeoutCount     int64
 }
 
-func NewSample(name string, size, reportFreq int) *Sample {
+func NewSample(name string, size, reportFreq int, timeoutThreshold time.Duration) *Sample {
 	return &Sample{
-		name:       name,
-		size:       size,
-		reportFreq: reportFreq,
+		name:             name,
+		size:             size,
+		reportFreq:       reportFreq,
+		timeoutThreshold: timeoutThreshold,
 	}
 }
 
@@ -46,6 +49,9 @@ func (s *Sample) Measure(f func()) time.Duration {
 	}
 	s.count++
 	s.last = elapsed
+	if elapsed > s.timeoutThreshold {
+		s.timeoutCount++
+	}
 	if s.count%int64(s.reportFreq) == 0 || s.count >= int64(s.size) {
 		s.report()
 		if s.count >= int64(s.size) {
@@ -66,11 +72,12 @@ func (s *Sample) report() {
 		return
 	}
 	log.WithFields(log.F{
-		"min":   s.min,
-		"avg":   s.sum / time.Duration(s.count),
-		"max":   s.max,
-		"last":  s.last,
-		"count": s.count,
+		"min":      s.min,
+		"avg":      s.sum / time.Duration(s.count),
+		"max":      s.max,
+		"last":     s.last,
+		"count":    s.count,
+		"timeouts": s.timeoutCount,
 	}).Infof("%s sample report", s.name)
 }
 
@@ -80,4 +87,5 @@ func (s *Sample) reset() {
 	s.min = 0
 	s.count = 0
 	s.last = 0
+	s.timeoutCount = 0
 }

@@ -3,6 +3,7 @@ package ingest
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/stellar/go/exp/services/trade-aggregations/metrics"
 	"github.com/stellar/go/exp/services/trade-aggregations/store"
@@ -19,7 +20,7 @@ func newSink(writer store.BigTableWriter, maxParallelWrites int) sink {
 	return sink{
 		writer:              writer,
 		bucketWritersGroup:  newWorkerGroup(maxParallelWrites),
-		bucketWriteDuration: metrics.NewSample("writeBuckets", 100, 1),
+		bucketWriteDuration: metrics.NewSample("writeBuckets", 100, 1, time.Second*30),
 		progress:            newProgressMarker(writer),
 	}
 }

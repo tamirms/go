@@ -3,6 +3,7 @@ package ingest
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/stellar/go/exp/services/trade-aggregations/metrics"
 	"github.com/stellar/go/exp/services/trade-aggregations/store"
@@ -25,7 +26,7 @@ func newProgressMarker(writer store.BigTableWriter) *progressMarker {
 	return &progressMarker{
 		completed:     map[int64]bool{},
 		writer:        writer,
-		writeDuration: metrics.NewSample("writeProgress", 100, 1),
+		writeDuration: metrics.NewSample("writeProgress", 100, 1, time.Second*5),
 		inProgress: heap.New(
 			func(a, b int64) bool {
 				return a < b

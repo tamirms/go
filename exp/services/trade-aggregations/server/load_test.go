@@ -37,7 +37,7 @@ func TestLoad(t *testing.T) {
 	t.Log(queries[0], queries[len(queries)-1])
 	rand.Shuffle(len(queries), func(i, j int) { queries[i], queries[j] = queries[j], queries[i] })
 
-	requestLatency := metrics.NewSample("request", 10000, requestsPerSecond)
+	requestLatency := metrics.NewSample("request", 100000, requestsPerSecond, 10*time.Second)
 	queue := make(chan string, queueSize)
 	for i := 0; i < workers; i++ {
 		go func() {
