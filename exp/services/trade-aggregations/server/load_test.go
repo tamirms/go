@@ -36,6 +36,7 @@ func TestLoad(t *testing.T) {
 	t.Log(len(queries))
 	t.Log(queries[0], queries[len(queries)-1])
 	rand.Shuffle(len(queries), func(i, j int) { queries[i], queries[j] = queries[j], queries[i] })
+	serverErrors := 0
 
 	requestLatency := metrics.NewSample("request", 100000, requestsPerSecond, 10*time.Second)
 	queue := make(chan string, queueSize)
@@ -49,7 +50,10 @@ func TestLoad(t *testing.T) {
 					require.NoError(t, err)
 					if resp.StatusCode != http.StatusOK {
 						log.Warnf("query %v returned status %v", query, resp.StatusCode)
-
+						if resp.StatusCode > 500 {
+							serverErrors++
+							t.Log("server errors", serverErrors)
+						}
 					}
 				})
 				_, err := io.ReadAll(resp.Body)
@@ -61,6 +65,7 @@ func TestLoad(t *testing.T) {
 
 	ticker := time.NewTicker(time.Second)
 	all := queries
+	totalRequests := 0
 	for range ticker.C {
 		for i := 0; i < requestsPerSecond; i++ {
 			if len(queries) == 0 {
@@ -69,6 +74,11 @@ func TestLoad(t *testing.T) {
 			query := queries[0]
 			queries = queries[1:]
 			queue <- query
+		}
+		totalRequests += requestsPerSecond
+		if totalRequests >= 10000+requestsPerSecond*2 {
+			t.Log("server errors", serverErrors)
+			break
 		}
 	}
 }
