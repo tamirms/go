@@ -49,7 +49,7 @@ func FromGCSClient(ctx context.Context, client *storage.Client, bucketPath strin
 	prefix := strings.TrimPrefix(parsed.Path, "/")
 	bucketName := parsed.Host
 
-	log.Infof("creating GCS client for bucket: %s, prefix: %s", bucketName, prefix)
+	log.Debugf("creating GCS client for bucket: %s, prefix: %s", bucketName, prefix)
 	// Check the bucket exists
 	bucket := client.Bucket(bucketName)
 	if _, err := bucket.Attrs(ctx); err != nil {
@@ -91,7 +91,7 @@ func (b GCSDataStore) GetFile(ctx context.Context, filePath string) (io.ReadClos
 		}
 		return nil, fmt.Errorf("error retrieving file %s: %w", filePath, err)
 	}
-	log.Infof("File retrieved successfully: %s", filePath)
+	log.Debugf("File retrieved successfully: %s", filePath)
 	return r, nil
 }
 
@@ -102,7 +102,7 @@ func (b GCSDataStore) PutFileIfNotExists(ctx context.Context, filePath string, i
 		if gcsError, ok := err.(*googleapi.Error); ok {
 			switch gcsError.Code {
 			case http.StatusPreconditionFailed:
-				log.Infof("Precondition failed: %s already exists in the bucket", filePath)
+				log.Debugf("Precondition failed: %s already exists in the bucket", filePath)
 				return false, nil // Treat as success
 			default:
 				log.Errorf("GCS error: %s %s", gcsError.Message, gcsError.Body)
@@ -110,7 +110,7 @@ func (b GCSDataStore) PutFileIfNotExists(ctx context.Context, filePath string, i
 		}
 		return false, fmt.Errorf("error uploading file %s: %w", filePath, err)
 	}
-	log.Infof("File uploaded successfully: %s", filePath)
+	log.Debugf("File uploaded successfully: %s", filePath)
 	return true, nil
 }
 
@@ -124,7 +124,7 @@ func (b GCSDataStore) PutFile(ctx context.Context, filePath string, in io.Writer
 		}
 		return fmt.Errorf("error uploading file %s: %w", filePath, err)
 	}
-	log.Infof("File uploaded successfully: %s", filePath)
+	log.Debugf("File uploaded successfully: %s", filePath)
 	return nil
 }
 

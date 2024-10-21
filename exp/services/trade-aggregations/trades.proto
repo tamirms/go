@@ -1,0 +1,30 @@
+syntax = "proto3";
+package trades;
+
+option go_package = "exp/services/trade-aggregations/tradesproto";
+
+// run `protoc --go_out=. exp/services/trade-aggregations/trades.proto` to generate go protobuf bindings
+
+message Fraction {
+  // The portion of the denominator in the faction, e.g. 2 in 2/3.
+  int64 numerator = 1;
+
+  // The value by which the numerator is divided, e.g. 3 in 2/3. Must be
+  // positive.
+  int64 denominator = 2;
+}
+
+message Aggregation {
+  int64 timestamp = 1;
+  int64 count = 2;
+  bytes base_volume = 3;
+  bytes counter_volume = 4;
+  Fraction high = 5;
+  Fraction low = 6;
+  Fraction open = 7;
+  Fraction close = 8;
+}
+
+message Bucket {
+  repeated Aggregation aggregations = 1;
+}
