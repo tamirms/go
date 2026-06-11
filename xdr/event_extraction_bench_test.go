@@ -1,7 +1,6 @@
 package xdr_test
 
 import (
-	"bytes"
 	"os"
 	"testing"
 
@@ -56,7 +55,7 @@ func BenchmarkExtractAllEvents(b *testing.B) {
 		}
 	})
 
-	b.Run("view", func(b *testing.B) {
+	b.Run("views", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			events, err := extractAllEventsView(data)
 			if err != nil {
@@ -107,7 +106,7 @@ func BenchmarkExtractEventsByTxHash(b *testing.B) {
 		}
 	})
 
-	b.Run("view", func(b *testing.B) {
+	b.Run("views", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			events, err := extractEventsByHashView(data, targetHash)
 			if err != nil {
@@ -244,247 +243,4 @@ func extractEventsByHashFullDecode(data []byte, targetHash xdr.Hash) ([]DBEvent,
 	}
 
 	return nil, nil // tx not found
-}
-
-// --- View implementations ---
-
-func extractAllEventsView(data []byte) ([]DBEvent, error) {
-	view := xdr.LedgerCloseMetaView(data)
-	v1, err := view.V1()
-	if err != nil {
-		return nil, err
-	}
-
-	var results []DBEvent
-
-	txArr, err := v1.TxProcessing()
-	if err != nil {
-		return nil, err
-	}
-	for tx, iterErr := range txArr.Iter() {
-		if iterErr != nil {
-			return nil, iterErr
-		}
-
-		events, err := extractEventsFromTxView(data, &tx)
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, events...)
-	}
-
-	return results, nil
-}
-
-func extractEventsByHashView(data []byte, targetHash xdr.Hash) ([]DBEvent, error) {
-	view := xdr.LedgerCloseMetaView(data)
-	v1, err := view.V1()
-	if err != nil {
-		return nil, err
-	}
-
-	txArr, err := v1.TxProcessing()
-	if err != nil {
-		return nil, err
-	}
-	for tx, iterErr := range txArr.Iter() {
-		if iterErr != nil {
-			return nil, iterErr
-		}
-
-		// Check hash
-		resultView, err := tx.Result()
-		if err != nil {
-			return nil, err
-		}
-		hashView, err := resultView.TransactionHash()
-		if err != nil {
-			return nil, err
-		}
-		hashBytes, err := hashView.Value()
-		if err != nil {
-			return nil, err
-		}
-		if !bytes.Equal(hashBytes, targetHash[:]) {
-			continue
-		}
-
-		// Found — extract events
-		return extractEventsFromTxView(data, &tx)
-	}
-
-	return nil, nil // not found
-}
-
-// extractEventsFromTxView extracts all contract events from a single
-// TransactionResultMeta view.
-func extractEventsFromTxView(ledgerData []byte, tx *xdr.TransactionResultMetaView) ([]DBEvent, error) {
-	// Get tx hash and success flag so the view path does the same work as
-	// the full-decode comparison (which reads both from the transaction result).
-	resultView, err := tx.Result()
-	if err != nil {
-		return nil, err
-	}
-	hashView, err := resultView.TransactionHash()
-	if err != nil {
-		return nil, err
-	}
-	hashBytes, err := hashView.Value()
-	if err != nil {
-		return nil, err
-	}
-	var txHash [32]byte
-	copy(txHash[:], hashBytes)
-
-	txResult, err := resultView.Result()
-	if err != nil {
-		return nil, err
-	}
-	resultResult, err := txResult.Result()
-	if err != nil {
-		return nil, err
-	}
-	codeView, err := resultResult.Code()
-	if err != nil {
-		return nil, err
-	}
-	code, err := codeView.Value()
-	if err != nil {
-		return nil, err
-	}
-	txSuccess := code == xdr.TransactionResultCodeTxSuccess
-
-	// Navigate to TxApplyProcessing → TransactionMeta
-	metaView, err := tx.TxApplyProcessing()
-	if err != nil {
-		return nil, err
-	}
-	metaV, err := metaView.V()
-	if err != nil {
-		return nil, err
-	}
-	metaVVal, err := metaV.Value()
-	if err != nil {
-		return nil, err
-	}
-	if metaVVal != 3 {
-		return nil, nil
-	}
-
-	v3, err := metaView.V3()
-	if err != nil {
-		return nil, err
-	}
-
-	// Check SorobanMeta optional
-	sorobanOpt, err := v3.SorobanMeta()
-	if err != nil {
-		return nil, err
-	}
-	sorobanMeta, present, err := sorobanOpt.Unwrap()
-	if err != nil {
-		return nil, err
-	}
-	if !present {
-		return nil, nil
-	}
-
-	var results []DBEvent
-
-	eventsArr, err := sorobanMeta.Events()
-	if err != nil {
-		return nil, err
-	}
-	for event, eventErr := range eventsArr.Iter() {
-		if eventErr != nil {
-			return nil, eventErr
-		}
-
-		dbEvent := DBEvent{TxHash: txHash, TxSuccess: txSuccess}
-
-		// Event type
-		evType, err := event.Type()
-		if err != nil {
-			return nil, err
-		}
-		evTypeVal, err := evType.Value()
-		if err != nil {
-			return nil, err
-		}
-		dbEvent.EventType = int32(evTypeVal)
-
-		// Contract ID (optional)
-		cidOpt, err := event.ContractId()
-		if err != nil {
-			return nil, err
-		}
-		cidView, present, err := cidOpt.Unwrap()
-		if err != nil {
-			return nil, err
-		}
-		if present {
-			dbEvent.ContractID, err = cidView.Value()
-			if err != nil {
-				return nil, err
-			}
-		}
-
-		// Full event XDR — synthesize a DiagnosticEvent by prepending the
-		// bool discriminant to the ContractEvent bytes.
-		// DiagnosticEvent = { bool inSuccessfulContractCall; ContractEvent event; }
-		// XDR: 4 bytes (bool) + ContractEvent bytes.
-		eventRaw, err := event.Raw()
-		if err != nil {
-			return nil, err
-		}
-		diagXDR := make([]byte, 4+len(eventRaw))
-		if txSuccess {
-			diagXDR[3] = 1 // big-endian bool true
-		}
-		copy(diagXDR[4:], eventRaw)
-		dbEvent.EventXDR = diagXDR
-
-		// Topics 1-4 as individual XDR blobs
-		body, err := event.Body()
-		if err != nil {
-			return nil, err
-		}
-		bodyV, err := body.V()
-		if err != nil {
-			return nil, err
-		}
-		bodyVVal, err := bodyV.Value()
-		if err != nil {
-			return nil, err
-		}
-		if bodyVVal == 0 {
-			v0, err := body.V0()
-			if err != nil {
-				return nil, err
-			}
-			topicsArr, err := v0.Topics()
-			if err != nil {
-				return nil, err
-			}
-			topicCount, err := topicsArr.Count()
-			if err != nil {
-				return nil, err
-			}
-			for j := 0; j < topicCount && j < 4; j++ {
-				topic, err := topicsArr.At(j)
-				if err != nil {
-					return nil, err
-				}
-				topicRaw, err := topic.Raw()
-				if err != nil {
-					return nil, err
-				}
-				dbEvent.Topics[j] = topicRaw
-			}
-		}
-
-		results = append(results, dbEvent)
-	}
-
-	return results, nil
 }

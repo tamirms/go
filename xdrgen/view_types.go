@@ -24,11 +24,18 @@ type ArrayViewType struct {
 	Element *ViewType // Element type.
 	Count   uint32    // Fixed element count (> 0 = fixed, 0 = variable).
 	MaxLen  uint32    // Schema max length (variable arrays only, 0 = unbounded).
+	// ElementInline is true when the element TypeRef was anonymous-inline (not a
+	// named/typedef ref). An inline element that needs a concrete view type is not
+	// emitted by the planner (which only names top-level inline types), so codegen
+	// must reject it (see elementNeedsInlineType).
+	ElementInline bool
 }
 
 // OptionalViewType holds fields specific to optional types.
 type OptionalViewType struct {
 	Element *ViewType
+	// ElementInline mirrors ArrayViewType.ElementInline for optional elements.
+	ElementInline bool
 }
 
 // NamedViewType holds fields specific to named type references (struct/union/enum).

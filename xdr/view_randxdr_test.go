@@ -29,11 +29,11 @@ func TestView_RandXDR_RawRoundTrip(t *testing.T) {
 		data, err := v.MarshalBinary()
 		require.NoError(t, err)
 
-		raw, err := LedgerCloseMetaView(data).Raw()
+		raw, err := Raw(LedgerCloseMetaView(data))
 		require.NoError(t, err, "iteration %d", i)
 		require.Equal(t, data, raw, "iteration %d", i)
 
-		require.NoError(t, LedgerCloseMetaView(data).ValidateFull(), "iteration %d", i)
+		require.NoError(t, Validate(LedgerCloseMetaView(data)), "iteration %d", i)
 	}
 }
 
@@ -63,10 +63,8 @@ func TestView_RandXDR_AccessorCorrectness(t *testing.T) {
 		require.NoError(t, err)
 		view := LedgerCloseMetaView(data)
 
-		// Discriminant: view must report the same arm as the value.
-		vDisc, err := view.V()
-		require.NoError(t, err)
-		vVal, err := vDisc.Value()
+		// Discriminant: V() now returns the decoded value directly (section 3).
+		vVal, err := view.V()
 		require.NoError(t, err)
 		require.Equal(t, int32(lcm.V), vVal, "iter %d", i)
 
@@ -92,7 +90,7 @@ func TestView_RandXDR_AccessorCorrectness(t *testing.T) {
 		}
 		hdrWant, err := lcm.LedgerHeaderHistoryEntry().MarshalBinary()
 		require.NoError(t, err)
-		hdrGot, err := hdrView.Raw()
+		hdrGot, err := Raw(hdrView)
 		require.NoError(t, err)
 		require.Equal(t, hdrWant, hdrGot, "iter %d: LedgerHeader", i)
 
@@ -106,7 +104,10 @@ func TestView_RandXDR_AccessorCorrectness(t *testing.T) {
 		}
 		idx := rng.Intn(txCount)
 		var txValue interface{ MarshalBinary() ([]byte, error) }
-		var txView interface{ Raw() ([]byte, error) }
+		// Raw() is now the package generic xdr.Raw, so we trim each element view
+		// inside its case (where the concrete view type is known) rather than
+		// holding it behind a Raw()-bearing interface.
+		var txGot []byte
 		switch lcm.V {
 		case 0:
 			txValue = &lcm.MustV0().TxProcessing[idx]
@@ -114,7 +115,9 @@ func TestView_RandXDR_AccessorCorrectness(t *testing.T) {
 			require.NoError(t, e)
 			tp, e := v0.TxProcessing()
 			require.NoError(t, e)
-			txView, e = tp.At(idx)
+			elem, e := tp.At(idx)
+			require.NoError(t, e)
+			txGot, e = Raw(elem)
 			require.NoError(t, e)
 		case 1:
 			txValue = &lcm.MustV1().TxProcessing[idx]
@@ -122,7 +125,9 @@ func TestView_RandXDR_AccessorCorrectness(t *testing.T) {
 			require.NoError(t, e)
 			tp, e := v1.TxProcessing()
 			require.NoError(t, e)
-			txView, e = tp.At(idx)
+			elem, e := tp.At(idx)
+			require.NoError(t, e)
+			txGot, e = Raw(elem)
 			require.NoError(t, e)
 		case 2:
 			txValue = &lcm.MustV2().TxProcessing[idx]
@@ -130,12 +135,12 @@ func TestView_RandXDR_AccessorCorrectness(t *testing.T) {
 			require.NoError(t, e)
 			tp, e := v2.TxProcessing()
 			require.NoError(t, e)
-			txView, e = tp.At(idx)
+			elem, e := tp.At(idx)
+			require.NoError(t, e)
+			txGot, e = Raw(elem)
 			require.NoError(t, e)
 		}
 		txWant, err := txValue.MarshalBinary()
-		require.NoError(t, err)
-		txGot, err := txView.Raw()
 		require.NoError(t, err)
 		require.Equal(t, txWant, txGot, "iter %d: TxProcessing[%d]", i, idx)
 	}

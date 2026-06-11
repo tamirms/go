@@ -1,5 +1,5 @@
 // maxDepth is the maximum recursion depth for all view operations:
-// field accessors, Raw(), array iteration, and ValidateFull().
+// field accessors, Raw(v), array iteration, and Validate(v).
 // Matches stellar-core's xdr::marshaling_stack_limit (set in main.cpp).
 const maxDepth = 1500
 
@@ -7,7 +7,7 @@ const maxDepth = 1500
 //
 // Navigation: field accessors compute offsets by calling size() on preceding
 // fields, then return a sub-view (fat slice) starting at that offset. Each
-// accessor checks bounds before reading and returns (T, error). ValidateFull()
+// accessor checks bounds before reading and returns (T, error). Validate(v)
 // is an opt-in upfront check that recursively validates the entire structure.
 //
 // size() computes the byte extent. valid() does the same but also recursively
@@ -22,7 +22,7 @@ const maxDepth = 1500
 //   - Termination: bounded by maxDepth.
 //
 // Fat slices: views may extend beyond the wire extent — sub-views returned
-// by accessors include trailing bytes. Use Raw() to trim to exact extent.
+// by accessors include trailing bytes. Use Raw(v) to trim to exact extent.
 // Do not use []byte(v) directly.
 type View interface {
 	~[]byte
@@ -49,6 +49,25 @@ func viewCopy[T View](v T) (T, error) {
 	copy(copied, raw)
 	return T(copied), nil
 }
+
+// Raw returns the exact wire bytes for a view, trimmed from the fat slice. It is
+// a package-level generic over the sealed View constraint and is the only
+// self-trim for fat union and optional views, which are excluded from Fields()
+// and otherwise have no exact-bytes path.
+func Raw[T View](v T) ([]byte, error) { return viewRaw(v) }
+
+// Copy returns an independent copy of a view that does not alias the original
+// bytes.
+func Copy[T View](v T) (T, error) { return viewCopy(v) }
+
+// Validate checks that a view is well-formed: bounds, schema constraints, and
+// depth limits over the whole subtree.
+func Validate[T View](v T) error { return validate(v) }
+
+// MustRaw is the panicking companion to Raw, for Must navigation chains that
+// terminate in bytes rather than a scalar. Like the other Must variants it must
+// be called within a Try/recover boundary.
+func MustRaw[T View](v T) []byte { return must(viewRaw(v)) }
 
 // must panics if err is non-nil, otherwise returns v. Used by generated MustX() methods.
 func must[T any](v T, err error) T {
@@ -112,6 +131,7 @@ const (
 	ViewErrBadBoolValue
 	ViewErrArrayCountExceedsMax
 	ViewErrNonZeroPadding
+	ViewErrCursorMisuse
 )
 
 func (e *ViewError) Error() string {
@@ -130,6 +150,7 @@ func (k ViewErrorKind) String() string {
 	case ViewErrBadBoolValue: return "bool value not 0 or 1"
 	case ViewErrArrayCountExceedsMax: return "array count exceeds schema max"
 	case ViewErrNonZeroPadding: return "non-zero padding byte"
+	case ViewErrCursorMisuse: return "cursor accessed before first Next, after exhaustion, or after an error"
 	default: return "unknown error"
 	}
 }
@@ -165,6 +186,12 @@ func viewErrNonZeroPadding(off uint32) error {
 	return &ViewError{Kind: ViewErrNonZeroPadding, Offset: off}
 }
 
+// errCursorMisuse is the sticky error armed when a cursor's Elem()/Bytes() is
+// called before the first Next(), after Next() returns false, or after a prior
+// error (the cursor contract). Preallocated like other cursor sentinels so the
+// misuse path allocates nothing.
+var errCursorMisuse = &ViewError{Kind: ViewErrCursorMisuse}
+
 // errArrayTraverseOOB is a preallocated error used by arrayTraverse to keep
 // that function inlineable (error constructors allocate + inflate inline cost).
 var errArrayTraverseOOB = &ViewError{Kind: ViewErrShortBuffer, Detail: "array element offset exceeds data"}
@@ -193,10 +220,7 @@ func (v Int32View) valid(_ int) (int, error) {
 	if len(v) < 4 { return 0, viewErrShortBuffer(0, "need 4 bytes") }
 	return v.size(0)
 }
-func (v Int32View) Raw() ([]byte, error) { return viewRaw(v) }
-func (v Int32View) ValidateFull() error { return validate(v) }
 func (v Int32View) MustValue() int32 { return must(v.Value()) }
-func (v Int32View) MustRaw() []byte { return must(v.Raw()) }
 
 type Uint32View []byte
 
@@ -209,10 +233,7 @@ func (v Uint32View) valid(_ int) (int, error) {
 	if len(v) < 4 { return 0, viewErrShortBuffer(0, "need 4 bytes") }
 	return v.size(0)
 }
-func (v Uint32View) Raw() ([]byte, error) { return viewRaw(v) }
-func (v Uint32View) ValidateFull() error { return validate(v) }
 func (v Uint32View) MustValue() uint32 { return must(v.Value()) }
-func (v Uint32View) MustRaw() []byte { return must(v.Raw()) }
 
 type Int64View []byte
 
@@ -225,10 +246,7 @@ func (v Int64View) valid(_ int) (int, error) {
 	if len(v) < 8 { return 0, viewErrShortBuffer(0, "need 8 bytes") }
 	return v.size(0)
 }
-func (v Int64View) Raw() ([]byte, error) { return viewRaw(v) }
-func (v Int64View) ValidateFull() error { return validate(v) }
 func (v Int64View) MustValue() int64 { return must(v.Value()) }
-func (v Int64View) MustRaw() []byte { return must(v.Raw()) }
 
 type Uint64View []byte
 
@@ -241,10 +259,7 @@ func (v Uint64View) valid(_ int) (int, error) {
 	if len(v) < 8 { return 0, viewErrShortBuffer(0, "need 8 bytes") }
 	return v.size(0)
 }
-func (v Uint64View) Raw() ([]byte, error) { return viewRaw(v) }
-func (v Uint64View) ValidateFull() error { return validate(v) }
 func (v Uint64View) MustValue() uint64 { return must(v.Value()) }
-func (v Uint64View) MustRaw() []byte { return must(v.Raw()) }
 
 type BoolView []byte
 
@@ -263,10 +278,7 @@ func (v BoolView) valid(_ int) (int, error) {
 	if val := binary.BigEndian.Uint32(v); val > 1 { return 0, viewErrBadBoolValue(0, val) }
 	return v.size(0)
 }
-func (v BoolView) Raw() ([]byte, error) { return viewRaw(v) }
-func (v BoolView) ValidateFull() error { return validate(v) }
 func (v BoolView) MustValue() bool { return must(v.Value()) }
-func (v BoolView) MustRaw() []byte { return must(v.Raw()) }
 
 type Float32View []byte
 
@@ -279,10 +291,7 @@ func (v Float32View) valid(_ int) (int, error) {
 	if len(v) < 4 { return 0, viewErrShortBuffer(0, "need 4 bytes") }
 	return v.size(0)
 }
-func (v Float32View) Raw() ([]byte, error) { return viewRaw(v) }
-func (v Float32View) ValidateFull() error { return validate(v) }
 func (v Float32View) MustValue() float32 { return must(v.Value()) }
-func (v Float32View) MustRaw() []byte { return must(v.Raw()) }
 
 type Float64View []byte
 
@@ -295,10 +304,7 @@ func (v Float64View) valid(_ int) (int, error) {
 	if len(v) < 8 { return 0, viewErrShortBuffer(0, "need 8 bytes") }
 	return v.size(0)
 }
-func (v Float64View) Raw() ([]byte, error) { return viewRaw(v) }
-func (v Float64View) ValidateFull() error { return validate(v) }
 func (v Float64View) MustValue() float64 { return must(v.Value()) }
-func (v Float64View) MustRaw() []byte { return must(v.Raw()) }
 
 // =============================================================================
 // VarOpaqueView — opaque / string
@@ -340,10 +346,7 @@ func (v VarOpaqueView) valid(_ int) (int, error) {
 	if _, err := v.Value(); err != nil { return 0, err }
 	return v.size(0)
 }
-func (v VarOpaqueView) Raw() ([]byte, error) { return viewRaw(v) }
-func (v VarOpaqueView) ValidateFull() error { return validate(v) }
 func (v VarOpaqueView) MustValue() []byte { return must(v.Value()) }
-func (v VarOpaqueView) MustRaw() []byte { return must(v.Raw()) }
 
 // =============================================================================
 // Array helpers — shared runtime for generated array view types.
@@ -357,6 +360,24 @@ func arrayViewCount(data []byte, maxCount int) (int, error) {
 	if err != nil { return 0, err }
 	if maxCount > 0 && count > maxCount {
 		return 0, viewErrArrayCountExceedsMax(0, count, uint32(maxCount))
+	}
+	return count, nil
+}
+
+// arrayViewCountChecked reads the 4-byte array count from data and validates it
+// against both the schema maximum (maxCount, if > 0) and the remaining buffer.
+//
+// The buffer check rejects any count whose elements cannot fit the data, in
+// O(1), at cursor construction. It is written as a division
+// to be overflow-safe: a wire count can be up to ~4.3e9, so count*minElemW could
+// overflow; (len(data)-4)/minElemW cannot, since minElemW >= 1 and both operands
+// are non-negative. minElemW is a per-type compile-time constant clamped to a
+// floor of 1, so division by it lowers to a multiply-and-shift.
+func arrayViewCountChecked(data []byte, maxCount, minElemW int) (int, error) {
+	count, err := arrayViewCount(data, maxCount)
+	if err != nil { return 0, err }
+	if count > (len(data)-4)/minElemW {
+		return 0, viewErrArrayCountExceedsData(0, count, len(data)-4)
 	}
 	return count, nil
 }

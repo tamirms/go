@@ -8,6 +8,10 @@ import (
 	"path/filepath"
 )
 
+// generatedFileMode is the permission for files xdrgen writes. They are generated
+// source, meant to be world-readable like the rest of the checked-in tree.
+const generatedFileMode = 0o644
+
 func main() {
 	inputPath := flag.String("input", "", "Path to JSON IR file from Rust XDR parser")
 	outputDir := flag.String("output", "", "Output directory for generated Go files")
@@ -48,9 +52,24 @@ func main() {
 	}
 
 	viewsPath := filepath.Join(*outputDir, "xdr_views_generated.go")
-	if err := os.WriteFile(viewsPath, viewsContent, 0644); err != nil {
+	if err := os.WriteFile(viewsPath, viewsContent, generatedFileMode); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing views: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Fprintf(os.Stderr, "Generated: %s (%d bytes)\n", viewsPath, len(viewsContent))
+
+	// Generate the conformance-harness registry (typedValueViewTypes) alongside
+	// the views, derived from the views source so it stays in lockstep with them.
+	registryContent, err := GenerateViewsRegistry(viewsContent)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating views registry: %v\n", err)
+		os.Exit(1)
+	}
+
+	registryPath := filepath.Join(*outputDir, "xdr_views_registry_generated_test.go")
+	if err := os.WriteFile(registryPath, registryContent, generatedFileMode); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing views registry: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stderr, "Generated: %s (%d bytes)\n", registryPath, len(registryContent))
 }

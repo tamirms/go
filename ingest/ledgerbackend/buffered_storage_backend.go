@@ -170,8 +170,15 @@ func (bsb *BufferedStorageBackend) loadBatchForSequence(ctx context.Context, seq
 	if err != nil {
 		return fmt.Errorf("reading batch ledger metas: %w", err)
 	}
-	slices, err := metas.All()
-	if err != nil {
+	// Materialize each ledger as an exact-extent view via the Scan() cursor
+	// (the array iteration idiom). Elem() yields the trimmed LedgerCloseMetaView
+	// for each element.
+	mc := metas.Scan()
+	slices := make([]xdr.LedgerCloseMetaView, 0, mc.Count())
+	for mc.Next() {
+		slices = append(slices, mc.Elem())
+	}
+	if err := mc.Err(); err != nil {
 		return fmt.Errorf("materializing batch ledgers: %w", err)
 	}
 	if len(slices) == 0 {

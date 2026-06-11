@@ -1,7 +1,6 @@
 package xdr_test
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"testing"
@@ -59,7 +58,7 @@ func BenchmarkFindTransactionByHash(b *testing.B) {
 			}
 		})
 
-		b.Run("view/"+pos.name, func(b *testing.B) {
+		b.Run("views/"+pos.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				resp, err := findByHashView(data, targetHash)
 				if err != nil {
@@ -106,103 +105,6 @@ func findByHashFullDecode(data []byte, targetHash xdr.Hash) (TransactionResponse
 			UnsafeMeta:    meta,
 			LedgerVersion: uint32(v1.LedgerHeader.Header.LedgerVersion),
 			Hash:          targetHash,
-		}, nil
-	}
-
-	return TransactionResponse{}, fmt.Errorf("transaction not found")
-}
-
-// findByHashView uses the view API to scan transaction hashes without decoding,
-// then extracts raw bytes for the matching transaction.
-func findByHashView(data []byte, targetHash xdr.Hash) (TransactionResponse, error) {
-	view := xdr.LedgerCloseMetaView(data)
-
-	v1, err := view.V1()
-	if err != nil {
-		return TransactionResponse{}, err
-	}
-
-	// Ledger version (read once before scanning)
-	hdr, err := v1.LedgerHeader()
-	if err != nil {
-		return TransactionResponse{}, err
-	}
-	header, err := hdr.Header()
-	if err != nil {
-		return TransactionResponse{}, err
-	}
-	ledgerVersion, err := header.LedgerVersion()
-	if err != nil {
-		return TransactionResponse{}, err
-	}
-	ledgerVersionVal, err := ledgerVersion.Value()
-	if err != nil {
-		return TransactionResponse{}, err
-	}
-
-	i := -1
-	txArr, err := v1.TxProcessing()
-	if err != nil {
-		return TransactionResponse{}, err
-	}
-	for txView, iterErr := range txArr.Iter() {
-		i++
-		if iterErr != nil {
-			return TransactionResponse{}, iterErr
-		}
-
-		resultView, err := txView.Result()
-		if err != nil {
-			return TransactionResponse{}, err
-		}
-
-		hashView, err := resultView.TransactionHash()
-		if err != nil {
-			return TransactionResponse{}, err
-		}
-		hashBytes, err := hashView.Value()
-		if err != nil {
-			return TransactionResponse{}, err
-		}
-
-		if !bytes.Equal(hashBytes, targetHash[:]) {
-			continue
-		}
-
-		// Found it — extract fields via the view API.
-		resultBytes, err := resultView.Raw()
-		if err != nil {
-			return TransactionResponse{}, err
-		}
-
-		feeView, err := txView.FeeProcessing()
-		if err != nil {
-			return TransactionResponse{}, err
-		}
-		feeBytes, err := feeView.Raw()
-		if err != nil {
-			return TransactionResponse{}, err
-		}
-
-		metaView, err := txView.TxApplyProcessing()
-		if err != nil {
-			return TransactionResponse{}, err
-		}
-		metaBytes, err := metaView.Raw()
-		if err != nil {
-			return TransactionResponse{}, err
-		}
-
-		var hash xdr.Hash
-		copy(hash[:], hashBytes)
-
-		return TransactionResponse{
-			Index:         uint32(i + 1),
-			Result:        resultBytes,
-			FeeChanges:    feeBytes,
-			UnsafeMeta:    metaBytes,
-			LedgerVersion: ledgerVersionVal,
-			Hash:          hash,
 		}, nil
 	}
 

@@ -40,9 +40,10 @@ func FuzzLedgerCloseMetaView(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		view := LedgerCloseMetaView(data)
 		// These may return errors but must never panic on any input.
-		// ValidateFull traverses the entire structure, so if a navigation
-		// path would panic on this data, this call catches it.
-		_ = view.ValidateFull()
-		_, _ = view.Raw()
+		// Validate traverses the entire structure, so if a navigation path
+		// would panic on this data, this call catches it. Raw/Validate are the
+		// package generics.
+		_ = Validate(view)
+		_, _ = Raw(view)
 	})
 }

@@ -23,13 +23,12 @@ func TestView_LedgerCloseMeta_RoundTrip(t *testing.T) {
 
 	view := LedgerCloseMetaView(data)
 
-	raw, err := view.Raw()
+	raw, err := Raw(view)
 	require.NoError(t, err)
 	require.Equal(t, len(data), len(raw))
 
-	ver, err := view.V()
-	require.NoError(t, err)
-	verVal, err := ver.Value()
+	// V() returns the decoded discriminant directly.
+	verVal, err := view.V()
 	require.NoError(t, err)
 	require.Equal(t, int32(0), verVal)
 
@@ -48,9 +47,9 @@ func TestView_LedgerCloseMeta_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint32(12345), seqVal)
 
-	raw2, err := view.Raw()
+	raw2, err := Raw(view)
 	require.NoError(t, err)
 	require.Equal(t, data, raw2)
 
-	require.NoError(t, view.ValidateFull())
+	require.NoError(t, Validate(view))
 }
